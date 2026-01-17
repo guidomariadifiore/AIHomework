@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>ISEQL Event Designer</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+
+        .step-card {
+            background: #fff;
+            border: 1px solid #ddd;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .input-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #333;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        h2 {
+            margin-top: 0;
+            color: #2c3e50;
+            font-size: 1.2em;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+        }
+
+        .btn {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1em;
+        }
+
+        .btn:hover {
+            background-color: #2980b9;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="app-container" style="max-width: 800px; margin: 0 auto;">
+
+        <div style="text-align: center; margin-bottom: 30px;">
+            <h1 style="color: #2c3e50;">ISEQL Event Designer</h1>
+            <p>Define high-level surveillance events using Interval-based Relational Algebra.</p>
+        </div>
+
+        <div class="step-card" id="step-0" style="border-left: 5px solid #e74c3c;">
+            <h2>0. Event Definition</h2>
+            <p>Name this event so it can be stored and reused later as a sub-event.</p>
+            <div class="input-group">
+                <label>Event Name (Unique ID)</label>
+                <input type="text" id="event-name" placeholder="e.g., SuspiciousPackageDrop">
+                <small style="color: #666;">This will be the function name stored in the database.</small>
+            </div>
+        </div>
+
+        <div class="step-card" id="step-1">
+            <h2>1. Select Sub-Events</h2>
+            <div style="display: flex; gap: 20px;">
+                <div style="flex: 1;">
+                    <h3>First Interval (M1)</h3>
+                    <div class="input-group">
+                        <label>Predicate / Event</label>
+                        <select id="op1-predicate">
+                            <option value="in">in (Presence)</option>
+                            <option value="hasPkg">hasPkg (Holding)</option>
+                            <option value="insideCar">insideCar (Vehicle)</option>
+                            <option value="EXISTING">Re-use Stored Event...</option>
+                        </select>
+                    </div>
+                    <div class="input-group hidden" id="op1-existing-container">
+                        <input type="text" id="op1-existing-name" placeholder="Enter Event Name (e.g. BDPE)">
+                    </div>
+
+                    <div class="input-group">
+                        <label>Argument 1 (e.g., Person)</label>
+                        <input type="text" id="op1-arg1" placeholder="p1">
+                    </div>
+                    <div class="input-group">
+                        <label>Argument 2 (e.g., Object)</label>
+                        <input type="text" id="op1-arg2" placeholder="pkg1">
+                    </div>
+                </div>
+
+                <div style="flex: 1;">
+                    <h3>Second Interval (M2)</h3>
+                    <div class="input-group">
+                        <label>Predicate / Event</label>
+                        <select id="op2-predicate">
+                            <option value="in">in (Presence)</option>
+                            <option value="hasPkg">hasPkg (Holding)</option>
+                            <option value="insideCar">insideCar (Vehicle)</option>
+                            <option value="EXISTING">Re-use Stored Event...</option>
+                        </select>
+                    </div>
+                    <div class="input-group hidden" id="op2-existing-container">
+                        <input type="text" id="op2-existing-name" placeholder="Enter Event Name">
+                    </div>
+
+                    <div class="input-group">
+                        <label>Argument 1</label>
+                        <input type="text" id="op2-arg1" placeholder="p2">
+                    </div>
+                    <div class="input-group">
+                        <label>Argument 2</label>
+                        <input type="text" id="op2-arg2" placeholder="pkg1">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="step-card" id="step-2">
+            <h2>2. Temporal Relationship</h2>
+
+            <div class="input-group">
+                <label>How are M1 and M2 related?</label>
+                <div style="margin-top: 10px;">
+                    <label style="display:inline; margin-right: 15px;">
+                        <input type="radio" name="temp-relation" value="sequential" checked> Sequential (Sequence)
+                    </label>
+                    <label style="display:inline;">
+                        <input type="radio" name="temp-relation" value="overlapping"> Overlapping (Concurrent)
+                    </label>
+                </div>
+            </div>
+
+            <div id="sequential-options" class="options-box"
+                style="background: #f9f9f9; padding: 15px; border-radius: 4px;">
+                <div class="input-group">
+                    <label>Sequence Order</label>
+                    <select id="seq-order">
+                        <option value="before">M1 happens BEFORE M2 (Bef)</option>
+                        <option value="after">M1 happens AFTER M2 (Aft)</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label>Max Gap (Frames) [δ]</label>
+                    <input type="number" id="seq-max-gap" placeholder="e.g. 1 (Leave empty for infinity)">
+                    <small>1 = Immediate/Contiguous (like BDPE)</small>
+                </div>
+            </div>
+
+            <div id="overlapping-options" class="options-box hidden"
+                style="background: #e8f6f3; padding: 15px; border-radius: 4px; border: 1px solid #d1f2eb;">
+                <div class="input-group">
+                    <label>Overlap Logic Type</label>
+                    <select id="overlap-type">
+                        <option value="DJ">Containment (One happens entirely DURING the other)</option>
+                        <option value="SP">Start Order (M1 starts before M2 starts)</option>
+                        <option value="EF">End Order (M1 ends after M2 ends)</option>
+                        <option value="LOJ">Complex Overlap (Left/Right Join)</option>
+                    </select>
+                </div>
+
+                <div id="overlap-params">
+                    <p style="font-size: 0.9em; color: #555; margin-bottom: 10px;">
+                        <strong>Constraints:</strong> Leave fields empty to allow any duration.
+                    </p>
+
+                    <div class="input-group">
+                        <label id="label-delta">Start Tolerance (Frames) [δ]</label>
+                        <input type="number" id="overlap-delta" placeholder="Max distance between start points">
+                    </div>
+
+                    <div class="input-group" id="container-epsilon">
+                        <label id="label-epsilon">End Tolerance (Frames) [ε]</label>
+                        <input type="number" id="overlap-epsilon" placeholder="Max distance between end points">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="step-card" id="step-3">
+            <h2>3. Constraints & Filters</h2>
+            <div id="constraints-list">
+            </div>
+            <button class="btn" id="add-constraint-btn" style="font-size: 0.8em;">+ Add Argument Constraint</button>
+
+            <hr style="margin: 20px 0; border: 0; border-top: 1px dashed #ccc;">
+
+            <label>
+                <input type="checkbox" id="exclusion-mode">
+                <span style="color: #c0392b;">Exclusion Mode (Set Difference)</span>
+            </label>
+            <small>Subtract M2 results from M1 (e.g. for "Unattended" events).</small>
+        </div>
+
+        <div class="step-card" style="background-color: #eaf2f8; border-color: #a9cce3;">
+            <h2>4. Finalize & Save</h2>
+            <div style="display: flex; gap: 10px;">
+                <button class="btn" id="generate-btn" style="flex: 1;">Generate Query Code</button>
+                <button class="btn" id="save-event-btn" style="flex: 1; background-color: #27ae60;">Save to
+                    Library</button>
+            </div>
+
+            <div style="margin-top: 15px;">
+                <textarea id="output-area" rows="8" style="width: 100%; font-family: monospace;" readonly></textarea>
+            </div>
+        </div>
+
+    </div>
+
+    <script src="iseql-logic.js"></script>
+
+</body>
+
+</html>
