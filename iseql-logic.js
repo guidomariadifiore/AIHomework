@@ -6,9 +6,9 @@ document.addEventListener("DOMContentLoaded", () => {
   updateDropdowns();
 
   // Initialize UI on load
-  ["op1", "op2"].forEach(prefix => {
-      updateSchemaInfoBox(prefix);
-      renderArgumentInputs(prefix); // <--- NEW: Generate inputs on load
+  ["op1", "op2"].forEach((prefix) => {
+    updateSchemaInfoBox(prefix);
+    renderArgumentInputs(prefix); // <--- NEW: Generate inputs on load
   });
 
   const saveBtn = document.getElementById("save-event-btn");
@@ -20,8 +20,17 @@ document.addEventListener("DOMContentLoaded", () => {
       // 1. Capture the Dynamic Schema defined in Step 4
       let outputSchema = [];
       document.querySelectorAll(".proj-row").forEach((row) => {
-        const alias = row.querySelector(".proj-alias").value || "field";
-        outputSchema.push({ id: alias, label: alias });
+        const source = row.querySelector(".proj-source").value; // Capture source too
+        const alias = row.querySelector(".proj-alias").value;
+
+        // If alias is empty, use the column name (e.g. M1.arg1 -> arg1) as the ID
+        const inferredId = alias
+          ? alias
+          : source.includes(".")
+            ? source.split(".")[1]
+            : source;
+
+        outputSchema.push({ id: inferredId, label: alias || inferredId });
       });
 
       // 2. Save
@@ -30,11 +39,12 @@ document.addEventListener("DOMContentLoaded", () => {
         outputSchema: outputSchema,
         date: new Date().toISOString(),
       };
+
       let library = JSON.parse(localStorage.getItem("iseql_library") || "[]");
-      
+
       if (library.find((e) => e.name === eventName)) {
-          alert("An event with this name already exists.");
-          return;
+        alert("An event with this name already exists.");
+        return;
       }
 
       library.push(eventData);
@@ -78,7 +88,9 @@ document.addEventListener("DOMContentLoaded", () => {
     if (select) {
       select.addEventListener("change", function () {
         const selectedOption = this.options[this.selectedIndex];
-        const inputContainer = document.getElementById(`${prefix}-existing-container`);
+        const inputContainer = document.getElementById(
+          `${prefix}-existing-container`,
+        );
         const nameInput = document.getElementById(`${prefix}-existing-name`);
 
         // Handle "Existing" text box visibility
@@ -89,7 +101,7 @@ document.addEventListener("DOMContentLoaded", () => {
         } else {
           inputContainer.classList.add("hidden");
         }
-        
+
         // Refresh all dynamic UI elements
         updateSchemaInfoBox(prefix);
         renderArgumentInputs(prefix); // <--- NEW: Rebuild inputs based on selection
@@ -97,30 +109,29 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     }
   });
-  
+
   // ==========================================
   // 2. NEW: DYNAMIC INPUT RENDERER
   // ==========================================
-  
+
   function renderArgumentInputs(prefix) {
-      const container = document.getElementById(`${prefix}-args-container`);
-      if(!container) return;
-      
-      const schema = getSchemaForOperand(prefix);
-      container.innerHTML = ""; // Clear old inputs
-      
-      schema.forEach(field => {
-          // Create a standard input group for each field in the schema
-          const div = document.createElement("div");
-          div.className = "input-group";
-          div.innerHTML = `
+    const container = document.getElementById(`${prefix}-args-container`);
+    if (!container) return;
+
+    const schema = getSchemaForOperand(prefix);
+    container.innerHTML = ""; // Clear old inputs
+
+    schema.forEach((field) => {
+      // Create a standard input group for each field in the schema
+      const div = document.createElement("div");
+      div.className = "input-group";
+      div.innerHTML = `
             <label>${field.label} (${field.id})</label>
             <input type="text" class="dynamic-arg-input" data-field-id="${field.id}" placeholder="Filter value (optional)">
           `;
-          container.appendChild(div);
-      });
+      container.appendChild(div);
+    });
   }
-
 
   // ==========================================
   // 3. UI LOGIC (Steps 2 & 3)
@@ -135,7 +146,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const containerEpsilon = document.getElementById("container-epsilon");
 
   function updateRelationUI() {
-    const selected = document.querySelector('input[name="temp-relation"]:checked').value;
+    const selected = document.querySelector(
+      'input[name="temp-relation"]:checked',
+    ).value;
     if (selected === "sequential") {
       seqOptions.style.display = "block";
       overlapOptions.style.display = "none";
@@ -149,7 +162,8 @@ document.addEventListener("DOMContentLoaded", () => {
   function updateOverlapInputs() {
     const type = overlapTypeSelect.value;
     containerEpsilon.style.display = "block";
-    document.getElementById("overlap-delta").parentElement.style.display = "block";
+    document.getElementById("overlap-delta").parentElement.style.display =
+      "block";
     if (type === "DJ") {
       labelDelta.textContent = "Max Start Delay [δ]";
       labelEpsilon.textContent = "Max End Delay [ε]";
@@ -157,7 +171,8 @@ document.addEventListener("DOMContentLoaded", () => {
       labelDelta.textContent = "Max Start Delay [δ]";
       containerEpsilon.style.display = "none";
     } else if (type === "EF") {
-      document.getElementById("overlap-delta").parentElement.style.display = "none";
+      document.getElementById("overlap-delta").parentElement.style.display =
+        "none";
       labelEpsilon.textContent = "Max End Delay [ε]";
     } else {
       labelDelta.textContent = "Start Point Distance [δ]";
@@ -166,7 +181,8 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   relationRadios.forEach((r) => r.addEventListener("change", updateRelationUI));
-  if (overlapTypeSelect) overlapTypeSelect.addEventListener("change", updateOverlapInputs);
+  if (overlapTypeSelect)
+    overlapTypeSelect.addEventListener("change", updateOverlapInputs);
   updateRelationUI();
 
   // --- CONSTRAINT BUILDER ---
@@ -197,20 +213,22 @@ document.addEventListener("DOMContentLoaded", () => {
             <input type="text" class="c-modifier" placeholder="+0" style="width:50px; text-align:center;">
             <button class="btn remove-btn" style="background:#e74c3c; width:auto; padding: 0 10px;">X</button>
         `;
-      row.querySelector(".remove-btn").addEventListener("click", () => row.remove());
+      row
+        .querySelector(".remove-btn")
+        .addEventListener("click", () => row.remove());
       constraintsList.appendChild(row);
     });
     addConstraintBtn.click();
   }
-  
+
   // --- PROJECTION BUILDER ---
   const addProjBtn = document.getElementById("add-proj-btn");
   const projList = document.getElementById("projection-list");
 
   if (addProjBtn) {
-      addProjBtn.addEventListener("click", () => {
-        addProjectionRow();
-      });
+    addProjBtn.addEventListener("click", () => {
+      addProjectionRow();
+    });
   }
 
   function addProjectionRow(defaultValue = null, defaultLabel = "") {
@@ -228,7 +246,9 @@ document.addEventListener("DOMContentLoaded", () => {
     `;
 
     if (defaultValue) row.querySelector(".proj-source").value = defaultValue;
-    row.querySelector(".remove-btn").addEventListener("click", () => row.remove());
+    row
+      .querySelector(".remove-btn")
+      .addEventListener("click", () => row.remove());
     projList.appendChild(row);
   }
 
@@ -240,25 +260,29 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }, 100);
 
-
   // ==========================================
   // 4. GENERATION LOGIC (UPDATED)
   // ==========================================
 
-  document.getElementById("generate-btn").addEventListener("click", generateISEQL);
+  document
+    .getElementById("generate-btn")
+    .addEventListener("click", generateISEQL);
 
   function generateISEQL() {
     const op1 = buildOperandString("op1", "M1");
     const op2 = buildOperandString("op2", "M2");
 
     let operatorString = "";
-    const relationType = document.querySelector('input[name="temp-relation"]:checked').value;
+    const relationType = document.querySelector(
+      'input[name="temp-relation"]:checked',
+    ).value;
 
     if (relationType === "sequential") {
       const order = document.getElementById("seq-order").value;
       const gap = document.getElementById("seq-max-gap").value;
       let opCode = order === "before" ? "Bef" : "Aft";
-      operatorString = (gap && gap.trim() !== "") ? `${opCode}_{δ=${gap}}` : `${opCode}_{δ=d}`;
+      operatorString =
+        gap && gap.trim() !== "" ? `${opCode}_{δ=${gap}}` : `${opCode}_{δ=d}`;
     } else {
       const type = overlapTypeSelect.value;
       const delta = document.getElementById("overlap-delta").value;
@@ -267,10 +291,17 @@ document.addEventListener("DOMContentLoaded", () => {
       const dVal = delta ? delta : "d";
       const eVal = epsilon ? epsilon : "d";
 
-      if (type === "DJ") { params.push(`δ=${dVal}`); params.push(`ε=${eVal}`); }
-      else if (type === "SP") { params.push(`δ=${dVal}`); }
-      else if (type === "EF") { params.push(`ε=${eVal}`); }
-      else { params.push(`δ=${dVal}`); params.push(`ε=${eVal}`); } // LOJ
+      if (type === "DJ") {
+        params.push(`δ=${dVal}`);
+        params.push(`ε=${eVal}`);
+      } else if (type === "SP") {
+        params.push(`δ=${dVal}`);
+      } else if (type === "EF") {
+        params.push(`ε=${eVal}`);
+      } else {
+        params.push(`δ=${dVal}`);
+        params.push(`ε=${eVal}`);
+      } // LOJ
 
       operatorString = `${type}_{${params.join(", ")}}`;
     }
@@ -282,41 +313,74 @@ document.addEventListener("DOMContentLoaded", () => {
       const right = row.querySelector(".c-op2").value;
       const mod = row.querySelector(".c-modifier").value;
       let rightSide = right;
-      if (mod && mod !== "+0" && mod.trim() !== "") { rightSide = `${right} ${mod}`; }
+      if (mod && mod !== "+0" && mod.trim() !== "") {
+        rightSide = `${right} ${mod}`;
+      }
       constraints.push(`${left} ${op} ${rightSide}`);
     });
-    const constraintString = constraints.length > 0 ? constraints.join(" ∧ ") : "True";
+    const constraintString =
+      constraints.length > 0 ? constraints.join(" ∧ ") : "True";
 
     let projParts = [];
     let returnTypes = [];
     document.querySelectorAll(".proj-row").forEach((row) => {
       const source = row.querySelector(".proj-source").value;
       const alias = row.querySelector(".proj-alias").value;
-      if (alias) {
+
+      if (alias && alias.trim() !== "") {
+        // User provided an alias -> "M1.arg1 AS Giver"
         projParts.push(`${source} AS ${alias}`);
         returnTypes.push(`${alias} varchar`);
+      } else {
+        // No alias provided -> "M1.arg1"
+        projParts.push(source);
+
+        // We still need a name for the RETURNS TABLE signature.
+        // We infer it from the source: "M1.arg1" -> "arg1"
+        const inferredName = source.includes(".")
+          ? source.split(".")[1]
+          : source;
+        returnTypes.push(`${inferredName} varchar`);
       }
     });
-
     const sfSource = document.getElementById("proj-start-source").value;
     const efSource = document.getElementById("proj-end-source").value;
-    projParts.push(`${sfSource} AS sf`);
-    projParts.push(`${efSource} AS ef`);
+    projParts.push(sfSource);
+    projParts.push(efSource);
     returnTypes.push("sf integer");
     returnTypes.push("ef integer");
 
     const projectionFields = projParts.join(", ");
     const returnSig = returnTypes.join(", ");
     const isExclusion = document.getElementById("exclusion-mode").checked;
-    
+
     let finalExpression = "";
     if (isExclusion) {
-        finalExpression = `π_{ ${projectionFields} } ( ( ${op1} ) MINUS ( ${op2} ) WHERE ${constraintString} )`;
+      // Formatted for Unattended Package (Set Difference)
+      finalExpression = `
+π_{ ${projectionFields} } (
+  ( 
+    ${op1} 
+  ) 
+  MINUS 
+  ( 
+    ${op2} 
+  ) 
+  WHERE ${constraintString}
+)`;
     } else {
-        finalExpression = `π_{ ${projectionFields} } ( σ_{ ${constraintString} } ( ${op1} ${operatorString} ${op2} ) )`;
+      // Formatted for Standard Events (BDPE, etc.)
+      finalExpression = `
+π_{ ${projectionFields} } (
+  σ_{ ${constraintString} } (
+    ${op1} 
+    ${operatorString} 
+    ${op2}
+  ) 
+)`;
     }
-
-    const eventName = document.getElementById("event-name").value || "UnnamedEvent";
+    const eventName =
+      document.getElementById("event-name").value || "UnnamedEvent";
     const finalOutput = `-- ISEQL Definition for ${eventName}
 CREATE OR REPLACE FUNCTION ${eventName} (source VARCHAR) 
 RETURNS TABLE (${returnSig}) AS $$
@@ -335,29 +399,30 @@ $$ LANGUAGE plpgsql;`;
   function buildOperandString(prefix, label) {
     const pred = document.getElementById(`${prefix}-predicate`).value;
     let constraints = [];
-    
+
     // 1. Gather constraints from the new Dynamic Inputs
     const container = document.getElementById(`${prefix}-args-container`);
     if (container) {
-        container.querySelectorAll('.dynamic-arg-input').forEach(input => {
-            if(input.value && input.value.trim() !== "") {
-                const fieldId = input.dataset.fieldId;
-                constraints.push(`${fieldId}="${input.value}"`);
-            }
-        });
+      container.querySelectorAll(".dynamic-arg-input").forEach((input) => {
+        if (input.value && input.value.trim() !== "") {
+          const fieldId = input.dataset.fieldId;
+          constraints.push(`${fieldId}="${input.value}"`);
+        }
+      });
     }
 
     // 2. Handle EXISTING saved events
     if (pred === "EXISTING") {
-      const existName = document.getElementById(`${prefix}-existing-name`).value || "EventX";
+      const existName =
+        document.getElementById(`${prefix}-existing-name`).value || "EventX";
       // If user typed constraints (e.g. Giver="p1"), wrap the event in a Selection
       if (constraints.length > 0) {
-          return `σ_{ ${constraints.join(" ∧ ")} }(${existName}(${label}))`;
+        return `σ_{ ${constraints.join(" ∧ ")} }(${existName}(${label}))`;
       } else {
-          return `${existName}(${label})`;
+        return `${existName}(${label})`;
       }
     }
-    
+
     // 3. Handle Standard Predicates (in, hasPkg)
     // We add the predicate itself as the first constraint
     constraints.unshift(`pred="${pred}"`);
@@ -366,8 +431,8 @@ $$ LANGUAGE plpgsql;`;
 
   function getSchemaForOperand(prefix) {
     const predSelect = document.getElementById(`${prefix}-predicate`);
-    if (!predSelect) return []; 
-    
+    if (!predSelect) return [];
+
     const val = predSelect.value;
     // Default Schema for basic predicates
     let schema = [
@@ -397,7 +462,7 @@ $$ LANGUAGE plpgsql;`;
 
   function generateVariableOptionsHTML() {
     let html = "";
-    
+
     const m1Schema = getSchemaForOperand("op1");
     html += `<optgroup label="M1 Variables">`;
     m1Schema.forEach((field) => {
