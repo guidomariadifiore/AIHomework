@@ -5,6 +5,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   updateDropdowns();
 
+  // Initialize UI on load
+  ["op1", "op2"].forEach(prefix => {
+      updateSchemaInfoBox(prefix);
+      renderArgumentInputs(prefix); // <--- NEW: Generate inputs on load
+  });
+
   const saveBtn = document.getElementById("save-event-btn");
   if (saveBtn) {
     saveBtn.addEventListener("click", () => {
@@ -15,17 +21,22 @@ document.addEventListener("DOMContentLoaded", () => {
       let outputSchema = [];
       document.querySelectorAll(".proj-row").forEach((row) => {
         const alias = row.querySelector(".proj-alias").value || "field";
-        // We use the alias as the ID for future events
         outputSchema.push({ id: alias, label: alias });
       });
 
       // 2. Save
       const eventData = {
         name: eventName,
-        outputSchema: outputSchema, // <--- SAVING THE SCHEMA
+        outputSchema: outputSchema,
         date: new Date().toISOString(),
       };
       let library = JSON.parse(localStorage.getItem("iseql_library") || "[]");
+      
+      if (library.find((e) => e.name === eventName)) {
+          alert("An event with this name already exists.");
+          return;
+      }
+
       library.push(eventData);
       localStorage.setItem("iseql_library", JSON.stringify(library));
 
@@ -61,17 +72,16 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Auto-fill existing names
+  // Listener for Dropdown Changes
   ["op1", "op2"].forEach((prefix) => {
     const select = document.getElementById(`${prefix}-predicate`);
     if (select) {
       select.addEventListener("change", function () {
         const selectedOption = this.options[this.selectedIndex];
-        const inputContainer = document.getElementById(
-          `${prefix}-existing-container`,
-        );
+        const inputContainer = document.getElementById(`${prefix}-existing-container`);
         const nameInput = document.getElementById(`${prefix}-existing-name`);
 
+        // Handle "Existing" text box visibility
         if (this.value === "EXISTING") {
           inputContainer.classList.remove("hidden");
           if (selectedOption.dataset.realName)
@@ -79,14 +89,41 @@ document.addEventListener("DOMContentLoaded", () => {
         } else {
           inputContainer.classList.add("hidden");
         }
+        
+        // Refresh all dynamic UI elements
         updateSchemaInfoBox(prefix);
+        renderArgumentInputs(prefix); // <--- NEW: Rebuild inputs based on selection
         refreshAllVariableDropdowns();
       });
     }
   });
+  
+  // ==========================================
+  // 2. NEW: DYNAMIC INPUT RENDERER
+  // ==========================================
+  
+  function renderArgumentInputs(prefix) {
+      const container = document.getElementById(`${prefix}-args-container`);
+      if(!container) return;
+      
+      const schema = getSchemaForOperand(prefix);
+      container.innerHTML = ""; // Clear old inputs
+      
+      schema.forEach(field => {
+          // Create a standard input group for each field in the schema
+          const div = document.createElement("div");
+          div.className = "input-group";
+          div.innerHTML = `
+            <label>${field.label} (${field.id})</label>
+            <input type="text" class="dynamic-arg-input" data-field-id="${field.id}" placeholder="Filter value (optional)">
+          `;
+          container.appendChild(div);
+      });
+  }
+
 
   // ==========================================
-  // 2. UI LOGIC (Updated for Step 3)
+  // 3. UI LOGIC (Steps 2 & 3)
   // ==========================================
 
   const relationRadios = document.getElementsByName("temp-relation");
@@ -98,9 +135,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const containerEpsilon = document.getElementById("container-epsilon");
 
   function updateRelationUI() {
-    const selected = document.querySelector(
-      'input[name="temp-relation"]:checked',
-    ).value;
+    const selected = document.querySelector('input[name="temp-relation"]:checked').value;
     if (selected === "sequential") {
       seqOptions.style.display = "block";
       overlapOptions.style.display = "none";
@@ -114,8 +149,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function updateOverlapInputs() {
     const type = overlapTypeSelect.value;
     containerEpsilon.style.display = "block";
-    document.getElementById("overlap-delta").parentElement.style.display =
-      "block";
+    document.getElementById("overlap-delta").parentElement.style.display = "block";
     if (type === "DJ") {
       labelDelta.textContent = "Max Start Delay [δ]";
       labelEpsilon.textContent = "Max End Delay [ε]";
@@ -123,22 +157,19 @@ document.addEventListener("DOMContentLoaded", () => {
       labelDelta.textContent = "Max Start Delay [δ]";
       containerEpsilon.style.display = "none";
     } else if (type === "EF") {
-      document.getElementById("overlap-delta").parentElement.style.display =
-        "none";
+      document.getElementById("overlap-delta").parentElement.style.display = "none";
       labelEpsilon.textContent = "Max End Delay [ε]";
     } else {
-      // LOJ
       labelDelta.textContent = "Start Point Distance [δ]";
       labelEpsilon.textContent = "End Point Distance [ε]";
     }
   }
 
   relationRadios.forEach((r) => r.addEventListener("change", updateRelationUI));
-  if (overlapTypeSelect)
-    overlapTypeSelect.addEventListener("change", updateOverlapInputs);
+  if (overlapTypeSelect) overlapTypeSelect.addEventListener("change", updateOverlapInputs);
   updateRelationUI();
 
-  // --- EXPANDED CONSTRAINT BUILDER ---
+  // --- CONSTRAINT BUILDER ---
   const addConstraintBtn = document.getElementById("add-constraint-btn");
   const constraintsList = document.getElementById("constraints-list");
 
@@ -150,209 +181,145 @@ document.addEventListener("DOMContentLoaded", () => {
       row.style.gap = "5px";
       row.style.marginBottom = "10px";
 
-      // Expanded Variable List
-      const variableOptions = `
-    <option value="M1.arg1">M1.arg1 (Primary Actor)</option>
-    <option value="M1.arg2">M1.arg2 (Secondary Actor)</option>
-    <option value="M1.arg3">M1.arg3 (Object/Item)</option> <option value="M1.sf">M1.sf (Start Frame)</option>
-    <option value="M1.ef">M1.ef (End Frame)</option>
-    
-    <option value="M2.arg1">M2.arg1 (Primary Actor)</option>
-    <option value="M2.arg2">M2.arg2 (Secondary Actor)</option>
-    <option value="M2.arg3">M2.arg3 (Object/Item)</option> <option value="M2.sf">M2.sf (Start Frame)</option>
-    <option value="M2.ef">M2.ef (End Frame)</option>
-`;
+      const variableOptionsHTML = generateVariableOptionsHTML();
+
       row.innerHTML = `
-                <select class="c-op1" style="flex:1">${variableOptions}</select>
-                
-                <select class="c-operator" style="width:60px">
-                    <option value="=">=</option>
-                    <option value="!=">!=</option>
-                    <option value="<">&lt;</option>
-                    <option value=">">&gt;</option>
-                    <option value="<=">&le;</option>
-                    <option value=">=">&ge;</option>
-                </select>
-                
-                <select class="c-op2" style="flex:1">${variableOptions}</select>
-                
-                <input type="text" class="c-modifier" placeholder="+0" style="width:50px; text-align:center;">
-
-                <button class="btn remove-btn" style="background:#e74c3c; width:auto; padding: 0 10px;">X</button>
-            `;
-
-      row
-        .querySelector(".remove-btn")
-        .addEventListener("click", () => row.remove());
+            <select class="c-op1" style="flex:1">${variableOptionsHTML}</select>
+            <select class="c-operator" style="width:60px">
+                <option value="=">=</option>
+                <option value="!=">!=</option>
+                <option value="<">&lt;</option>
+                <option value=">">&gt;</option>
+                <option value="<=">&le;</option>
+                <option value=">=">&ge;</option>
+            </select>
+            <select class="c-op2" style="flex:1">${variableOptionsHTML}</select>
+            <input type="text" class="c-modifier" placeholder="+0" style="width:50px; text-align:center;">
+            <button class="btn remove-btn" style="background:#e74c3c; width:auto; padding: 0 10px;">X</button>
+        `;
+      row.querySelector(".remove-btn").addEventListener("click", () => row.remove());
       constraintsList.appendChild(row);
     });
     addConstraintBtn.click();
   }
+  
+  // --- PROJECTION BUILDER ---
+  const addProjBtn = document.getElementById("add-proj-btn");
+  const projList = document.getElementById("projection-list");
+
+  if (addProjBtn) {
+      addProjBtn.addEventListener("click", () => {
+        addProjectionRow();
+      });
+  }
+
+  function addProjectionRow(defaultValue = null, defaultLabel = "") {
+    const row = document.createElement("div");
+    row.className = "proj-row input-group";
+    row.style.display = "flex";
+    row.style.gap = "10px";
+    row.style.marginBottom = "10px";
+    const optionsHTML = generateVariableOptionsHTML();
+
+    row.innerHTML = `
+        <select class="proj-source" style="flex:2">${optionsHTML}</select>
+        <input type="text" class="proj-alias" placeholder="Alias (e.g. Giver)" style="flex:1" value="${defaultLabel}">
+        <button class="btn remove-btn" style="background:#e74c3c; width:auto; padding: 0 10px;">X</button>
+    `;
+
+    if (defaultValue) row.querySelector(".proj-source").value = defaultValue;
+    row.querySelector(".remove-btn").addEventListener("click", () => row.remove());
+    projList.appendChild(row);
+  }
+
+  setTimeout(() => {
+    if (projList && projList.children.length === 0) {
+      addProjectionRow("M1.arg1", "arg1");
+      addProjectionRow("M2.arg1", "arg2");
+      addProjectionRow("M1.arg2", "arg3");
+    }
+  }, 100);
+
 
   // ==========================================
-  // 3. GENERATION LOGIC (UPDATED)
+  // 4. GENERATION LOGIC (UPDATED)
   // ==========================================
 
-  document
-    .getElementById("generate-btn")
-    .addEventListener("click", generateISEQL);
+  document.getElementById("generate-btn").addEventListener("click", generateISEQL);
 
   function generateISEQL() {
     const op1 = buildOperandString("op1", "M1");
     const op2 = buildOperandString("op2", "M2");
 
     let operatorString = "";
-    const relationType = document.querySelector(
-      'input[name="temp-relation"]:checked',
-    ).value;
+    const relationType = document.querySelector('input[name="temp-relation"]:checked').value;
 
-    // --- 1. SEQUENTIAL LOGIC UPDATE ---
     if (relationType === "sequential") {
       const order = document.getElementById("seq-order").value;
       const gap = document.getElementById("seq-max-gap").value;
       let opCode = order === "before" ? "Bef" : "Aft";
-
-      // If user provides a gap, use it (e.g. BDPE where delta=1)
-      if (gap && gap.trim() !== "") {
-        operatorString = `${opCode}_{δ=${gap}}`;
-      } else {
-        // If NO gap provided, default to variable 'd' (max allowed)
-        operatorString = `${opCode}_{δ=d}`;
-      }
-    }
-    // --- 2. OVERLAPPING LOGIC ---
-    else {
+      operatorString = (gap && gap.trim() !== "") ? `${opCode}_{δ=${gap}}` : `${opCode}_{δ=d}`;
+    } else {
       const type = overlapTypeSelect.value;
       const delta = document.getElementById("overlap-delta").value;
       const epsilon = document.getElementById("overlap-epsilon").value;
       let params = [];
-
-      // Logic: If input exists use it, otherwise use 'd' (default variable)
       const dVal = delta ? delta : "d";
       const eVal = epsilon ? epsilon : "d";
 
-      if (type === "DJ") {
-        params.push(`δ=${dVal}`);
-        params.push(`ε=${eVal}`);
-      } else if (type === "SP") {
-        params.push(`δ=${dVal}`);
-      } else if (type === "EF") {
-        params.push(`ε=${eVal}`);
-      } else {
-        // LOJ
-        params.push(`δ=${dVal}`);
-        params.push(`ε=${eVal}`);
-      }
+      if (type === "DJ") { params.push(`δ=${dVal}`); params.push(`ε=${eVal}`); }
+      else if (type === "SP") { params.push(`δ=${dVal}`); }
+      else if (type === "EF") { params.push(`ε=${eVal}`); }
+      else { params.push(`δ=${dVal}`); params.push(`ε=${eVal}`); } // LOJ
 
       operatorString = `${type}_{${params.join(", ")}}`;
     }
 
-    // --- 3. CONSTRAINTS UPDATE (Handling modifiers) ---
     let constraints = [];
     document.querySelectorAll(".constraint-row").forEach((row) => {
       const left = row.querySelector(".c-op1").value;
       const op = row.querySelector(".c-operator").value;
       const right = row.querySelector(".c-op2").value;
-      const mod = row.querySelector(".c-modifier").value; // e.g. "+ 1"
-
-      // Check if modifier has value other than empty or +0
+      const mod = row.querySelector(".c-modifier").value;
       let rightSide = right;
-      if (mod && mod !== "+0" && mod.trim() !== "") {
-        rightSide = `${right} ${mod}`;
-      }
-
+      if (mod && mod !== "+0" && mod.trim() !== "") { rightSide = `${right} ${mod}`; }
       constraints.push(`${left} ${op} ${rightSide}`);
     });
-    const constraintString =
-      constraints.length > 0 ? constraints.join(" ∧ ") : "True";
-
-    // --- PROJECTION BUILDER (STEP 4) ---
-    const addProjBtn = document.getElementById("add-proj-btn");
-    const projList = document.getElementById("projection-list");
-
-    addProjBtn.addEventListener("click", () => {
-      addProjectionRow();
-    });
-
-    function addProjectionRow(defaultValue = null, defaultLabel = "") {
-      const row = document.createElement("div");
-      row.className = "proj-row input-group";
-      row.style.display = "flex";
-      row.style.gap = "10px";
-      row.style.marginBottom = "10px";
-
-      // Uses the helper to populate options!
-      const optionsHTML = generateVariableOptionsHTML();
-
-      row.innerHTML = `
-            <select class="proj-source" style="flex:2">
-                ${optionsHTML}
-            </select>
-            <input type="text" class="proj-alias" placeholder="Alias (e.g. Giver)" style="flex:1" value="${defaultLabel}">
-            <button class="btn remove-btn" style="background:#e74c3c; width:auto; padding: 0 10px;">X</button>
-        `;
-
-      // Set default value if provided
-      if (defaultValue) row.querySelector(".proj-source").value = defaultValue;
-
-      row
-        .querySelector(".remove-btn")
-        .addEventListener("click", () => row.remove());
-      projList.appendChild(row);
-    }
-
-    // Add default rows on load (e.g. Person 1, Person 2, Object)
-    // This gives the user a starting point
-    setTimeout(() => {
-      if (projList.children.length === 0) {
-        addProjectionRow("M1.arg1", "arg1");
-        addProjectionRow("M2.arg1", "arg2");
-        addProjectionRow("M1.arg2", "arg3");
-      }
-    }, 500); // Small delay to ensure M1/M2 are loaded
+    const constraintString = constraints.length > 0 ? constraints.join(" ∧ ") : "True";
 
     let projParts = [];
-    let returnTypes = []; // For the SQL function signature
-
-    // 1. Arguments
+    let returnTypes = [];
     document.querySelectorAll(".proj-row").forEach((row) => {
       const source = row.querySelector(".proj-source").value;
       const alias = row.querySelector(".proj-alias").value;
       if (alias) {
         projParts.push(`${source} AS ${alias}`);
-        returnTypes.push(`${alias} varchar`); // Assuming string/varchar for args
+        returnTypes.push(`${alias} varchar`);
       }
     });
 
-    // 2. Start/End Frames
     const sfSource = document.getElementById("proj-start-source").value;
     const efSource = document.getElementById("proj-end-source").value;
-
     projParts.push(`${sfSource} AS sf`);
     projParts.push(`${efSource} AS ef`);
-
-    // Add time types
     returnTypes.push("sf integer");
     returnTypes.push("ef integer");
 
     const projectionFields = projParts.join(", ");
     const returnSig = returnTypes.join(", ");
+    const isExclusion = document.getElementById("exclusion-mode").checked;
+    
+    let finalExpression = "";
+    if (isExclusion) {
+        finalExpression = `π_{ ${projectionFields} } ( ( ${op1} ) MINUS ( ${op2} ) WHERE ${constraintString} )`;
+    } else {
+        finalExpression = `π_{ ${projectionFields} } ( σ_{ ${constraintString} } ( ${op1} ${operatorString} ${op2} ) )`;
+    }
 
-    // ... (Constraint Logic stays same) ...
-
-    // Final String Assembly
-    const finalExpression = `
-π_{ ${projectionFields} } (
-  σ_{ ${constraintString} } (
-    ${op1} 
-    ${operatorString} 
-    ${op2}
-  ) 
-)`;
-
+    const eventName = document.getElementById("event-name").value || "UnnamedEvent";
     const finalOutput = `-- ISEQL Definition for ${eventName}
 CREATE OR REPLACE FUNCTION ${eventName} (source VARCHAR) 
-RETURNS TABLE (${returnSig}) AS $$ -- Dynamic Return Signature
+RETURNS TABLE (${returnSig}) AS $$
 BEGIN
     RETURN QUERY 
     SELECT * FROM 
@@ -362,46 +329,62 @@ $$ LANGUAGE plpgsql;`;
 
     document.getElementById("output-area").value = finalOutput;
   }
+
+  // --- UPDATED HELPER FUNCTIONS ---
+
   function buildOperandString(prefix, label) {
     const pred = document.getElementById(`${prefix}-predicate`).value;
-    if (pred === "EXISTING") {
-      const existName =
-        document.getElementById(`${prefix}-existing-name`).value || "EventX";
-      return `${existName}(${label})`;
+    let constraints = [];
+    
+    // 1. Gather constraints from the new Dynamic Inputs
+    const container = document.getElementById(`${prefix}-args-container`);
+    if (container) {
+        container.querySelectorAll('.dynamic-arg-input').forEach(input => {
+            if(input.value && input.value.trim() !== "") {
+                const fieldId = input.dataset.fieldId;
+                constraints.push(`${fieldId}="${input.value}"`);
+            }
+        });
     }
-    const arg1 = document.getElementById(`${prefix}-arg1`).value;
-    const arg2 = document.getElementById(`${prefix}-arg2`).value;
-    let parts = [`pred="${pred}"`];
-    if (arg1) parts.push(`arg1="${arg1}"`);
-    if (arg2) parts.push(`arg2="${arg2}"`);
-    return `σ_{ ${parts.join(" ∧ ")} }(${label})`;
+
+    // 2. Handle EXISTING saved events
+    if (pred === "EXISTING") {
+      const existName = document.getElementById(`${prefix}-existing-name`).value || "EventX";
+      // If user typed constraints (e.g. Giver="p1"), wrap the event in a Selection
+      if (constraints.length > 0) {
+          return `σ_{ ${constraints.join(" ∧ ")} }(${existName}(${label}))`;
+      } else {
+          return `${existName}(${label})`;
+      }
+    }
+    
+    // 3. Handle Standard Predicates (in, hasPkg)
+    // We add the predicate itself as the first constraint
+    constraints.unshift(`pred="${pred}"`);
+    return `σ_{ ${constraints.join(" ∧ ")} }(${label})`;
   }
 
-  // Helper to get available variables for M1 or M2
   function getSchemaForOperand(prefix) {
     const predSelect = document.getElementById(`${prefix}-predicate`);
+    if (!predSelect) return []; 
+    
     const val = predSelect.value;
-
     // Default Schema for basic predicates
     let schema = [
-      { id: "arg1", label: "Arg1 (Actor)" },
-      { id: "arg2", label: "Arg2 (Object)" },
+      { id: "arg1", label: "Arg1" },
+      { id: "arg2", label: "Arg2" },
     ];
 
     if (val === "EXISTING") {
-      // Find the selected option to get the stored real name
       const selectedOpt = predSelect.options[predSelect.selectedIndex];
       const realName = selectedOpt.dataset.realName;
-
-      // Fetch from library
       const library = JSON.parse(localStorage.getItem("iseql_library") || "[]");
       const savedEvent = library.find((e) => e.name === realName);
 
       if (savedEvent && savedEvent.outputSchema) {
-        // Use the saved dynamic schema
         schema = savedEvent.outputSchema;
       } else {
-        // Fallback for older saved events without schema
+        // Fallback schema for older saved events
         schema = [
           { id: "arg1", label: "Arg1" },
           { id: "arg2", label: "Arg2" },
@@ -412,11 +395,9 @@ $$ LANGUAGE plpgsql;`;
     return schema;
   }
 
-  // Helper to generate <option> tags for any dropdown (Constraints or Projection)
   function generateVariableOptionsHTML() {
     let html = "";
-
-    // Process M1
+    
     const m1Schema = getSchemaForOperand("op1");
     html += `<optgroup label="M1 Variables">`;
     m1Schema.forEach((field) => {
@@ -426,7 +407,6 @@ $$ LANGUAGE plpgsql;`;
     html += `<option value="M1.ef">M1 End Frame</option>`;
     html += `</optgroup>`;
 
-    // Process M2
     const m2Schema = getSchemaForOperand("op2");
     html += `<optgroup label="M2 Variables">`;
     m2Schema.forEach((field) => {
@@ -442,6 +422,7 @@ $$ LANGUAGE plpgsql;`;
   function updateSchemaInfoBox(prefix) {
     const schema = getSchemaForOperand(prefix);
     const displayDiv = document.getElementById(`${prefix}-schema-display`);
+    if (!displayDiv) return;
 
     if (schema.length > 0) {
       const desc = schema.map((s) => `<b>${s.id}</b>: ${s.label}`).join(", ");
@@ -452,18 +433,13 @@ $$ LANGUAGE plpgsql;`;
     }
   }
 
-  // Function to update ALL existing dropdowns (in constraints/projection) when operands change
   function refreshAllVariableDropdowns() {
     const newOptions = generateVariableOptionsHTML();
-
-    // Update Constraints
     document.querySelectorAll(".c-op1, .c-op2").forEach((select) => {
       const currentVal = select.value;
       select.innerHTML = newOptions;
-      select.value = currentVal; // Try to keep selection if valid
+      select.value = currentVal;
     });
-
-    // Update Projection Sources
     document.querySelectorAll(".proj-source").forEach((select) => {
       const currentVal = select.value;
       select.innerHTML = newOptions;
