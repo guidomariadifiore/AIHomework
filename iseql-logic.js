@@ -9,19 +9,27 @@ document.addEventListener("DOMContentLoaded", () => {
   if (saveBtn) {
     saveBtn.addEventListener("click", () => {
       const eventName = document.getElementById("event-name").value;
-      if (!eventName) {
-        alert("Please name your event in Step 0 before saving.");
-        return;
-      }
-      const eventData = { name: eventName, date: new Date().toISOString() };
+      if (!eventName) return alert("Name required.");
+
+      // 1. Capture the Dynamic Schema defined in Step 4
+      let outputSchema = [];
+      document.querySelectorAll(".proj-row").forEach((row) => {
+        const alias = row.querySelector(".proj-alias").value || "field";
+        // We use the alias as the ID for future events
+        outputSchema.push({ id: alias, label: alias });
+      });
+
+      // 2. Save
+      const eventData = {
+        name: eventName,
+        outputSchema: outputSchema, // <--- SAVING THE SCHEMA
+        date: new Date().toISOString(),
+      };
       let library = JSON.parse(localStorage.getItem("iseql_library") || "[]");
-      if (library.find((e) => e.name === eventName)) {
-        alert("Unique name required.");
-        return;
-      }
       library.push(eventData);
       localStorage.setItem("iseql_library", JSON.stringify(library));
-      alert(`Saved "${eventName}"!`);
+
+      alert(`Saved "${eventName}" with ${outputSchema.length} output fields!`);
       updateDropdowns();
     });
   }
@@ -63,6 +71,7 @@ document.addEventListener("DOMContentLoaded", () => {
           `${prefix}-existing-container`,
         );
         const nameInput = document.getElementById(`${prefix}-existing-name`);
+
         if (this.value === "EXISTING") {
           inputContainer.classList.remove("hidden");
           if (selectedOption.dataset.realName)
@@ -70,6 +79,8 @@ document.addEventListener("DOMContentLoaded", () => {
         } else {
           inputContainer.classList.add("hidden");
         }
+        updateSchemaInfoBox(prefix);
+        refreshAllVariableDropdowns();
       });
     }
   });
@@ -255,24 +266,82 @@ document.addEventListener("DOMContentLoaded", () => {
     const constraintString =
       constraints.length > 0 ? constraints.join(" ∧ ") : "True";
 
-    // --- 4. OUTPUT ---
-    const isExclusion = document.getElementById("exclusion-mode").checked;
-    // Standard Schema: Arg1 (Actor1), Arg2 (Actor2), Arg3 (Object/Item), SF, EF
-    // We assume M1.arg1 is Actor1, M2.arg1 is Actor2 (if different), and M1.arg2 is the Object.
-    const projectionFields =
-      "M1.arg1 AS arg1, M2.arg1 AS arg2, M1.arg2 AS arg3, M1.sf, M2.ef";
-    let finalExpression = "";
+    // --- PROJECTION BUILDER (STEP 4) ---
+    const addProjBtn = document.getElementById("add-proj-btn");
+    const projList = document.getElementById("projection-list");
 
-    if (isExclusion) {
-      finalExpression = `
-π_{ M1.arg1, M1.arg2, M1.sf, M1.ef } (
-  ( ${op1} ) 
-  MINUS 
-  ( ${op2} ) 
-  WHERE ${constraintString}
-)`;
-    } else {
-      finalExpression = `
+    addProjBtn.addEventListener("click", () => {
+      addProjectionRow();
+    });
+
+    function addProjectionRow(defaultValue = null, defaultLabel = "") {
+      const row = document.createElement("div");
+      row.className = "proj-row input-group";
+      row.style.display = "flex";
+      row.style.gap = "10px";
+      row.style.marginBottom = "10px";
+
+      // Uses the helper to populate options!
+      const optionsHTML = generateVariableOptionsHTML();
+
+      row.innerHTML = `
+            <select class="proj-source" style="flex:2">
+                ${optionsHTML}
+            </select>
+            <input type="text" class="proj-alias" placeholder="Alias (e.g. Giver)" style="flex:1" value="${defaultLabel}">
+            <button class="btn remove-btn" style="background:#e74c3c; width:auto; padding: 0 10px;">X</button>
+        `;
+
+      // Set default value if provided
+      if (defaultValue) row.querySelector(".proj-source").value = defaultValue;
+
+      row
+        .querySelector(".remove-btn")
+        .addEventListener("click", () => row.remove());
+      projList.appendChild(row);
+    }
+
+    // Add default rows on load (e.g. Person 1, Person 2, Object)
+    // This gives the user a starting point
+    setTimeout(() => {
+      if (projList.children.length === 0) {
+        addProjectionRow("M1.arg1", "arg1");
+        addProjectionRow("M2.arg1", "arg2");
+        addProjectionRow("M1.arg2", "arg3");
+      }
+    }, 500); // Small delay to ensure M1/M2 are loaded
+
+    let projParts = [];
+    let returnTypes = []; // For the SQL function signature
+
+    // 1. Arguments
+    document.querySelectorAll(".proj-row").forEach((row) => {
+      const source = row.querySelector(".proj-source").value;
+      const alias = row.querySelector(".proj-alias").value;
+      if (alias) {
+        projParts.push(`${source} AS ${alias}`);
+        returnTypes.push(`${alias} varchar`); // Assuming string/varchar for args
+      }
+    });
+
+    // 2. Start/End Frames
+    const sfSource = document.getElementById("proj-start-source").value;
+    const efSource = document.getElementById("proj-end-source").value;
+
+    projParts.push(`${sfSource} AS sf`);
+    projParts.push(`${efSource} AS ef`);
+
+    // Add time types
+    returnTypes.push("sf integer");
+    returnTypes.push("ef integer");
+
+    const projectionFields = projParts.join(", ");
+    const returnSig = returnTypes.join(", ");
+
+    // ... (Constraint Logic stays same) ...
+
+    // Final String Assembly
+    const finalExpression = `
 π_{ ${projectionFields} } (
   σ_{ ${constraintString} } (
     ${op1} 
@@ -280,14 +349,10 @@ document.addEventListener("DOMContentLoaded", () => {
     ${op2}
   ) 
 )`;
-    }
-
-    const eventName =
-      document.getElementById("event-name").value || "UnnamedEvent";
 
     const finalOutput = `-- ISEQL Definition for ${eventName}
 CREATE OR REPLACE FUNCTION ${eventName} (source VARCHAR) 
-RETURNS TABLE (arg1 varchar, arg2 varchar, arg3 varchar, sf integer, ef integer) AS $$
+RETURNS TABLE (${returnSig}) AS $$ -- Dynamic Return Signature
 BEGIN
     RETURN QUERY 
     SELECT * FROM 
@@ -297,7 +362,6 @@ $$ LANGUAGE plpgsql;`;
 
     document.getElementById("output-area").value = finalOutput;
   }
-
   function buildOperandString(prefix, label) {
     const pred = document.getElementById(`${prefix}-predicate`).value;
     if (pred === "EXISTING") {
@@ -311,5 +375,99 @@ $$ LANGUAGE plpgsql;`;
     if (arg1) parts.push(`arg1="${arg1}"`);
     if (arg2) parts.push(`arg2="${arg2}"`);
     return `σ_{ ${parts.join(" ∧ ")} }(${label})`;
+  }
+
+  // Helper to get available variables for M1 or M2
+  function getSchemaForOperand(prefix) {
+    const predSelect = document.getElementById(`${prefix}-predicate`);
+    const val = predSelect.value;
+
+    // Default Schema for basic predicates
+    let schema = [
+      { id: "arg1", label: "Arg1 (Actor)" },
+      { id: "arg2", label: "Arg2 (Object)" },
+    ];
+
+    if (val === "EXISTING") {
+      // Find the selected option to get the stored real name
+      const selectedOpt = predSelect.options[predSelect.selectedIndex];
+      const realName = selectedOpt.dataset.realName;
+
+      // Fetch from library
+      const library = JSON.parse(localStorage.getItem("iseql_library") || "[]");
+      const savedEvent = library.find((e) => e.name === realName);
+
+      if (savedEvent && savedEvent.outputSchema) {
+        // Use the saved dynamic schema
+        schema = savedEvent.outputSchema;
+      } else {
+        // Fallback for older saved events without schema
+        schema = [
+          { id: "arg1", label: "Arg1" },
+          { id: "arg2", label: "Arg2" },
+          { id: "arg3", label: "Arg3" },
+        ];
+      }
+    }
+    return schema;
+  }
+
+  // Helper to generate <option> tags for any dropdown (Constraints or Projection)
+  function generateVariableOptionsHTML() {
+    let html = "";
+
+    // Process M1
+    const m1Schema = getSchemaForOperand("op1");
+    html += `<optgroup label="M1 Variables">`;
+    m1Schema.forEach((field) => {
+      html += `<option value="M1.${field.id}">M1.${field.id} (${field.label})</option>`;
+    });
+    html += `<option value="M1.sf">M1 Start Frame</option>`;
+    html += `<option value="M1.ef">M1 End Frame</option>`;
+    html += `</optgroup>`;
+
+    // Process M2
+    const m2Schema = getSchemaForOperand("op2");
+    html += `<optgroup label="M2 Variables">`;
+    m2Schema.forEach((field) => {
+      html += `<option value="M2.${field.id}">M2.${field.id} (${field.label})</option>`;
+    });
+    html += `<option value="M2.sf">M2 Start Frame</option>`;
+    html += `<option value="M2.ef">M2 End Frame</option>`;
+    html += `</optgroup>`;
+
+    return html;
+  }
+
+  function updateSchemaInfoBox(prefix) {
+    const schema = getSchemaForOperand(prefix);
+    const displayDiv = document.getElementById(`${prefix}-schema-display`);
+
+    if (schema.length > 0) {
+      const desc = schema.map((s) => `<b>${s.id}</b>: ${s.label}`).join(", ");
+      displayDiv.innerHTML = `Output Schema: ${desc}`;
+      displayDiv.classList.remove("hidden");
+    } else {
+      displayDiv.classList.add("hidden");
+    }
+  }
+
+  // Function to update ALL existing dropdowns (in constraints/projection) when operands change
+  function refreshAllVariableDropdowns() {
+    const newOptions = generateVariableOptionsHTML();
+
+    // Update Constraints
+    document.querySelectorAll(".c-op1, .c-op2").forEach((select) => {
+      const currentVal = select.value;
+      select.innerHTML = newOptions;
+      select.value = currentVal; // Try to keep selection if valid
+    });
+
+    // Update Projection Sources
+    document.querySelectorAll(".proj-source").forEach((select) => {
+      const currentVal = select.value;
+      select.innerHTML = newOptions;
+      select.value = currentVal;
+    });
   }
 });
