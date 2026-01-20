@@ -19,20 +19,26 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // 1. Capture the Dynamic Schema defined in Step 4
       let outputSchema = [];
+      let argCounter = 1; // Start counting generic arguments
+
       document.querySelectorAll(".proj-row").forEach((row) => {
-        const source = row.querySelector(".proj-source").value; // Capture source too
-        const alias = row.querySelector(".proj-alias").value;
+        const source = row.querySelector(".proj-source").value;
+        const userAlias = row.querySelector(".proj-alias").value;
 
-        // If alias is empty, use the column name (e.g. M1.arg1 -> arg1) as the ID
-        const inferredId = alias
-          ? alias
-          : source.includes(".")
-            ? source.split(".")[1]
-            : source;
+        let finalId = "";
 
-        outputSchema.push({ id: inferredId, label: alias || inferredId });
+        if (userAlias && userAlias.trim() !== "") {
+          // If user typed "Giver", use "Giver"
+          finalId = userAlias;
+        } else {
+          // If empty, auto-assign "arg1", "arg2", "arg3"...
+          finalId = `arg${argCounter}`;
+          argCounter++;
+        }
+
+        // Save this schema
+        outputSchema.push({ id: finalId, label: userAlias || finalId });
       });
-
       // 2. Save
       const eventData = {
         name: eventName,
@@ -323,25 +329,24 @@ document.addEventListener("DOMContentLoaded", () => {
 
     let projParts = [];
     let returnTypes = [];
+    // 1. Arguments (from Step 4)
+    let argCounter = 1;
+
     document.querySelectorAll(".proj-row").forEach((row) => {
       const source = row.querySelector(".proj-source").value;
-      const alias = row.querySelector(".proj-alias").value;
+      const userAlias = row.querySelector(".proj-alias").value;
 
-      if (alias && alias.trim() !== "") {
-        // User provided an alias -> "M1.arg1 AS Giver"
-        projParts.push(`${source} AS ${alias}`);
-        returnTypes.push(`${alias} varchar`);
+      let finalAlias = "";
+
+      if (userAlias && userAlias.trim() !== "") {
+        finalAlias = userAlias;
       } else {
-        // No alias provided -> "M1.arg1"
-        projParts.push(source);
-
-        // We still need a name for the RETURNS TABLE signature.
-        // We infer it from the source: "M1.arg1" -> "arg1"
-        const inferredName = source.includes(".")
-          ? source.split(".")[1]
-          : source;
-        returnTypes.push(`${inferredName} varchar`);
+        finalAlias = `arg${argCounter}`;
+        argCounter++;
       }
+
+      projParts.push(`${source} AS ${finalAlias}`);
+      returnTypes.push(`${finalAlias} varchar`);
     });
     const sfSource = document.getElementById("proj-start-source").value;
     const efSource = document.getElementById("proj-end-source").value;
@@ -463,10 +468,17 @@ $$ LANGUAGE plpgsql;`;
   function generateVariableOptionsHTML() {
     let html = "";
 
+    // Helper to format options cleanly: "M1.arg1" instead of "M1.arg1 (arg1)"
+    const formatOption = (prefix, field) => {
+      // value is what the logic uses (M1.arg1)
+      // text is what you see (M1.arg1)
+      return `<option value="${prefix}.${field.id}">${prefix}.${field.label}</option>`;
+    };
+
     const m1Schema = getSchemaForOperand("op1");
     html += `<optgroup label="M1 Variables">`;
     m1Schema.forEach((field) => {
-      html += `<option value="M1.${field.id}">M1.${field.id} (${field.label})</option>`;
+      html += formatOption("M1", field);
     });
     html += `<option value="M1.sf">M1 Start Frame</option>`;
     html += `<option value="M1.ef">M1 End Frame</option>`;
@@ -475,7 +487,7 @@ $$ LANGUAGE plpgsql;`;
     const m2Schema = getSchemaForOperand("op2");
     html += `<optgroup label="M2 Variables">`;
     m2Schema.forEach((field) => {
-      html += `<option value="M2.${field.id}">M2.${field.id} (${field.label})</option>`;
+      html += formatOption("M2", field);
     });
     html += `<option value="M2.sf">M2 Start Frame</option>`;
     html += `<option value="M2.ef">M2 End Frame</option>`;
@@ -483,7 +495,6 @@ $$ LANGUAGE plpgsql;`;
 
     return html;
   }
-
   function updateSchemaInfoBox(prefix) {
     const schema = getSchemaForOperand(prefix);
     const displayDiv = document.getElementById(`${prefix}-schema-display`);
