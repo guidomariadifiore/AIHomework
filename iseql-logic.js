@@ -17,25 +17,23 @@ document.addEventListener("DOMContentLoaded", () => {
       const eventName = document.getElementById("event-name").value;
       if (!eventName) return alert("Name required.");
 
-      // 1. Capture the Dynamic Schema defined in Step 4
+      // 1. Capture the Dynamic Schema
       let outputSchema = [];
+      // (Removed argCounter to preserve "M1.arg1" names)
+
       document.querySelectorAll(".proj-row").forEach((row) => {
         const source = row.querySelector(".proj-source").value; 
         const userAlias = row.querySelector(".proj-alias").value;
         
-        // FIX: If alias is empty, use the full source with an underscore (e.g. BDPE_arg1)
-        // Note: 'source' might now look like "BDPE.arg1" instead of "M1.arg1"
-        const cleanSource = source.replace(/\./g, '_'); 
-        const uniqueId = userAlias ? userAlias : cleanSource;
+        // FIX: If alias is empty, use the full source (e.g. M1.arg1) as the ID
+        // We use the raw string with dot. 
+        const finalId = userAlias ? userAlias : source;
         
-        outputSchema.push({ id: uniqueId, label: userAlias || cleanSource });
+        outputSchema.push({ id: finalId, label: userAlias || finalId });
       });
 
-      // 2. Capture the Logic for "Verbose" expansion later
-      // We grab the raw algebra from the output textarea (stripping the SQL wrapper)
+      // 2. Capture Logic
       const fullText = document.getElementById("output-area").value;
-      // Extract just the part between "SELECT * FROM" and "; END;"
-      // This is a simple heuristic for this tool
       let logicDef = "";
       if (fullText.includes("SELECT * FROM")) {
           const start = fullText.indexOf("SELECT * FROM") + 13;
@@ -47,19 +45,16 @@ document.addEventListener("DOMContentLoaded", () => {
       const eventData = {
         name: eventName,
         outputSchema: outputSchema,
-        logicDefinition: logicDef, // <--- SAVING THE ALGEBRA
+        logicDefinition: logicDef,
         date: new Date().toISOString(),
       };
       
       let library = JSON.parse(localStorage.getItem("iseql_library") || "[]");
-      
-      // Remove old version if exists (to allow overwriting/redefining)
       library = library.filter(e => e.name !== eventName);
-
       library.push(eventData);
       localStorage.setItem("iseql_library", JSON.stringify(library));
 
-      alert(`Saved "${eventName}"!`);
+      alert(`Saved "${eventName}" with ${outputSchema.length} output fields!`);
       updateDropdowns();
     });
   }
@@ -91,7 +86,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Listener for Dropdown Changes
   ["op1", "op2"].forEach((prefix) => {
     const select = document.getElementById(`${prefix}-predicate`);
     if (select) {
@@ -100,7 +94,6 @@ document.addEventListener("DOMContentLoaded", () => {
         const inputContainer = document.getElementById(`${prefix}-existing-container`);
         const nameInput = document.getElementById(`${prefix}-existing-name`);
 
-        // Handle "Existing" text box visibility
         if (this.value === "EXISTING") {
           inputContainer.classList.remove("hidden");
           if (selectedOption.dataset.realName)
@@ -109,10 +102,9 @@ document.addEventListener("DOMContentLoaded", () => {
           inputContainer.classList.add("hidden");
         }
         
-        // Refresh all dynamic UI elements
         updateSchemaInfoBox(prefix);
         renderArgumentInputs(prefix);
-        refreshAllVariableDropdowns(); // <--- This will now use the NEW ALIASES
+        refreshAllVariableDropdowns();
       });
     }
   });
@@ -122,18 +114,14 @@ document.addEventListener("DOMContentLoaded", () => {
   // 2. HELPER: DYNAMIC ALIASING
   // ==========================================
 
-  // Returns "M1" or "M2" for basic predicates, OR the Event Name for saved events
   function getOperandAlias(prefix) {
       const predSelect = document.getElementById(`${prefix}-predicate`);
       if (!predSelect) return (prefix === 'op1' ? "M1" : "M2");
 
       if (predSelect.value === "EXISTING") {
           const selectedOpt = predSelect.options[predSelect.selectedIndex];
-          // Return the real name (e.g. "BDPE")
-          // Fallback to M1/M2 if something is wrong
           return selectedOpt.dataset.realName || (prefix === 'op1' ? "M1" : "M2");
       }
-      // For basic predicates (in, hasPkg), stick to M1/M2 convention
       return (prefix === 'op1' ? "M1" : "M2");
   }
 
@@ -142,7 +130,6 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!predSelect) return []; 
     
     const val = predSelect.value;
-    // Default Schema for basic predicates
     let schema = [
       { id: "arg1", label: "Arg1" },
       { id: "arg2", label: "Arg2" },
@@ -170,9 +157,16 @@ document.addEventListener("DOMContentLoaded", () => {
   function generateVariableOptionsHTML() {
     let html = "";
     
-    // Helper to format options using the Dynamic Alias
+    // FIX: If the field ID contains a dot (e.g. "M1.arg1"), 
+    // it implies it's a bubbled-up name. Show it RAW, without the Alias prefix.
     const formatOption = (prefixStr, alias, field) => {
-        // value="BDPE.arg1", text="BDPE.arg1 (Giver)"
+        if (field.id.includes('.')) {
+             // Example: ID="M1.arg1". Value should be "M1.arg1" (quoted implicitly by usage)
+             // We use quotes in the value to be safe for the constraints logic? 
+             // Actually, let's keep it clean string: "M1.arg1"
+             return `<option value='"${field.id}"'>${field.label}</option>`;
+        }
+        // Standard Case: "DPE2.arg1"
         return `<option value="${alias}.${field.id}">${alias}.${field.label}</option>`;
     };
 
@@ -201,12 +195,9 @@ document.addEventListener("DOMContentLoaded", () => {
     return html;
   }
 
-  // Refreshes the dropdowns in Step 3 & 4
   function refreshAllVariableDropdowns() {
     const newOptions = generateVariableOptionsHTML();
     document.querySelectorAll(".c-op1, .c-op2").forEach((select) => {
-      // We attempt to keep the selected value if it still exists, 
-      // but usually the alias change invalidates it.
       select.innerHTML = newOptions;
     });
     document.querySelectorAll(".proj-source").forEach((select) => {
@@ -248,7 +239,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
   // ==========================================
-  // 3. UI LOGIC (Steps 2 & 3 - Standard)
+  // 3. UI LOGIC (Steps 2 & 3)
   // ==========================================
 
   const relationRadios = document.getElementsByName("temp-relation");
@@ -325,8 +316,6 @@ document.addEventListener("DOMContentLoaded", () => {
       row.querySelector(".remove-btn").addEventListener("click", () => row.remove());
       constraintsList.appendChild(row);
     });
-    // Add default row
-    // Use a small timeout to let dropdowns populate first
     setTimeout(() => {
         if(constraintsList.children.length === 0) addConstraintBtn.click();
     }, 200);
@@ -363,7 +352,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   setTimeout(() => {
     if (projList && projList.children.length === 0) {
-        // We try to default to sensible defaults, but aliases are dynamic now
         const alias1 = getOperandAlias('op1');
         const alias2 = getOperandAlias('op2');
         addProjectionRow(`${alias1}.arg1`, "arg1");
@@ -373,19 +361,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
   // ==========================================
-  // 4. GENERATION LOGIC (UPDATED WITH RECURSION CHECK)
+  // 4. GENERATION LOGIC
   // ==========================================
 
   document.getElementById("generate-btn").addEventListener("click", generateISEQL);
 
   function generateISEQL() {
     const currentEventName = document.getElementById("event-name").value;
-
-    // Get Aliases
     const alias1 = getOperandAlias("op1");
     const alias2 = getOperandAlias("op2");
 
-    // Build Operands with Recursive Check
     const op1 = buildOperandString("op1", alias1, currentEventName);
     const op2 = buildOperandString("op2", alias2, currentEventName);
 
@@ -427,20 +412,22 @@ document.addEventListener("DOMContentLoaded", () => {
 
     let projParts = [];
     let returnTypes = [];
-    let argCounter = 1;
-
+    
     document.querySelectorAll(".proj-row").forEach((row) => {
       const source = row.querySelector(".proj-source").value;
       const alias = row.querySelector(".proj-alias").value;
       
       let finalAlias = "";
+      // If user provided alias, use it. Otherwise use source (quoted) as alias.
       if (alias && alias.trim() !== "") {
         finalAlias = alias;
       } else {
-        finalAlias = `arg${argCounter}`;
-        argCounter++;
+        // e.g. source="M1.arg1" -> alias="M1.arg1"
+        // We use quotes to make it a valid column identifier
+        finalAlias = `"${source.replace(/"/g, '')}"`; 
       }
       
+      // If source already has quotes (from Dropdown), keep them.
       projParts.push(`${source} AS ${finalAlias}`);
       returnTypes.push(`${finalAlias} varchar`);
     });
@@ -493,13 +480,10 @@ $$ LANGUAGE plpgsql;`;
     document.getElementById("output-area").value = finalOutput;
   }
 
-  // --- BUILD OPERAND STRING (HANDLES RECURSION) ---
-  
   function buildOperandString(prefix, alias, definitionName) {
     const pred = document.getElementById(`${prefix}-predicate`).value;
     let constraints = [];
     
-    // Gather filter constraints
     const container = document.getElementById(`${prefix}-args-container`);
     if (container) {
         container.querySelectorAll('.dynamic-arg-input').forEach(input => {
@@ -510,20 +494,14 @@ $$ LANGUAGE plpgsql;`;
         });
     }
 
-    // CASE 1: EXISTING SAVED EVENT
     if (pred === "EXISTING") {
       const existName = document.getElementById(`${prefix}-existing-name`).value || "EventX";
       
-      // *** THE RECURSION CHECK ***
-      // If the event we are using (existName) IS the event we are currently defining (definitionName)
-      // Then we must Expand it Verbose (use the stored logic)
       if (definitionName && existName === definitionName) {
           const library = JSON.parse(localStorage.getItem("iseql_library") || "[]");
           const savedEvent = library.find(e => e.name === existName);
           
           if (savedEvent && savedEvent.logicDefinition) {
-              // Return the raw Algebra
-              // If there are constraints, wrap the big block in Selection
               if (constraints.length > 0) {
                   return `σ_{ ${constraints.join(" ∧ ")} } ( \n ${savedEvent.logicDefinition} \n )`;
               }
@@ -531,7 +509,6 @@ $$ LANGUAGE plpgsql;`;
           }
       }
 
-      // Normal Case: Refer to it by Name (aliased)
       if (constraints.length > 0) {
           return `σ_{ ${constraints.join(" ∧ ")} }(${existName}(${alias}))`;
       } else {
@@ -539,7 +516,6 @@ $$ LANGUAGE plpgsql;`;
       }
     }
     
-    // CASE 2: RAW PREDICATE (in, hasPkg)
     constraints.unshift(`pred="${pred}"`);
     return `σ_{ ${constraints.join(" ∧ ")} }(${alias})`;
   }
