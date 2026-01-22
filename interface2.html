@@ -80,7 +80,23 @@
 
         <div class="step-card" id="step-0" style="border-left: 5px solid #e74c3c;">
             <h2>0. Event Definition</h2>
-            <p>Name this event so it can be stored and reused later as a sub-event.</p>
+
+            <div
+                style="background: #fdf2e9; padding: 10px; border: 1px dashed #e67e22; border-radius: 4px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between;">
+                <span style="font-weight: bold; color: #d35400; font-size: 0.9em;">Saved Library:</span>
+
+                <div style="flex: 1; margin: 0 15px;">
+                    <select id="saved-events-dropdown" style="padding: 5px;">
+                        <option value="">(Empty)</option>
+                    </select>
+                </div>
+
+                <button id="delete-selected-btn" class="btn"
+                    style="background-color: #c0392b; font-size: 0.8em; padding: 6px 12px;"
+                    title="Delete Selected Event">
+                    Delete
+                </button>
+            </div>
             <div class="input-group">
                 <label>Event Name (Unique ID)</label>
                 <input type="text" id="event-name" placeholder="e.g., SuspiciousPackageDrop">
@@ -172,28 +188,38 @@
                 <div id="overlapping-options" class="options-box hidden"
                     style="background: #e8f6f3; padding: 15px; border-radius: 4px; border: 1px solid #d1f2eb;">
                     <div class="input-group">
-                        <label>Overlap Logic Type</label>
+                        <label>Interval Operator</label>
                         <select id="overlap-type">
-                            <option value="DJ">Containment (One happens entirely DURING the other)</option>
-                            <option value="SP">Start Order (M1 starts before M2 starts)</option>
-                            <option value="EF">End Order (M1 ends after M2 ends)</option>
-                            <option value="LOJ">Complex Overlap (Left/Right Join)</option>
+                            <optgroup label="Containment (One inside the other)">
+                                <option value="DJ">DJ: M1 is During M2 (M1 inside M2)</option>
+                                <option value="RDJ">RDJ: M2 is During M1 (M2 inside M1)</option>
+                            </optgroup>
+
+                            <optgroup label="Overlapping (Intersecting)">
+                                <option value="LOJ">LOJ: Left Overlap (M1 starts before M2)</option>
+                                <option value="ROJ">ROJ: Right Overlap (M2 starts before M1)</option>
+                            </optgroup>
+
+                            <optgroup label="Start/End Order">
+                                <option value="SP">SP: Start Preceding (M1 starts before M2 starts)</option>
+                                <option value="EF">EF: End Following (M1 ends after M2 ends)</option>
+                            </optgroup>
                         </select>
                     </div>
 
                     <div id="overlap-params">
                         <p style="font-size: 0.9em; color: #555; margin-bottom: 10px;">
-                            <strong>Constraints:</strong> Leave fields empty to allow any duration.
+                            <strong>Constraints:</strong> Leave empty to use defaults (Max video length).
                         </p>
 
                         <div class="input-group">
-                            <label id="label-delta">Start Tolerance (Frames) [δ]</label>
-                            <input type="number" id="overlap-delta" placeholder="Max distance between start points">
+                            <label id="label-delta">Start Constraint [δ]</label>
+                            <input type="number" id="overlap-delta" placeholder="Frames (e.g. 30)">
                         </div>
 
                         <div class="input-group" id="container-epsilon">
-                            <label id="label-epsilon">End Tolerance (Frames) [ε]</label>
-                            <input type="number" id="overlap-epsilon" placeholder="Max distance between end points">
+                            <label id="label-epsilon">End Constraint [ε]</label>
+                            <input type="number" id="overlap-epsilon" placeholder="Frames (e.g. 30)">
                         </div>
                     </div>
                 </div>
@@ -259,10 +285,12 @@
                         readonly></textarea>
                 </div>
             </div>
-
         </div>
+    </div>
 
-        <script src="iseql-logic.js"></script>
+    </div>
+
+    <script src="iseql-logic.js"></script>
 
 </body>
 
