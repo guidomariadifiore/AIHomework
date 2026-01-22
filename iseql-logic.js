@@ -12,28 +12,26 @@ document.addEventListener("DOMContentLoaded", () => {
     renderArgumentInputs(prefix);
   });
 
+  // 1. REEMPLAZA TU saveBtn ACTUAL CON ESTE BLOQUE MEJORADO:
+  
   const saveBtn = document.getElementById("save-event-btn");
   if (saveBtn) {
     saveBtn.addEventListener("click", () => {
       const eventName = document.getElementById("event-name").value;
       if (!eventName) return alert("Name required.");
 
-      // 1. Capture the Dynamic Schema
+      // A) CAPTURAR EL ESQUEMA DE SALIDA (Para usarlo en otros eventos)
       let outputSchema = [];
-      // (Removed argCounter to preserve "M1.arg1" names)
-
-      document.querySelectorAll(".proj-row").forEach((row) => {
-        const source = row.querySelector(".proj-source").value;
-        const userAlias = row.querySelector(".proj-alias").value;
-
-        // FIX: If alias is empty, use the full source (e.g. M1.arg1) as the ID
-        // We use the raw string with dot. 
-        const finalId = userAlias ? userAlias : source;
-
-        outputSchema.push({ id: finalId, label: userAlias || finalId });
+      document.querySelectorAll(".proj-row").forEach((row, index) => {
+        const description = row.querySelector(".proj-alias").value;
+        const standardAlias = `arg${index + 1}`; 
+        outputSchema.push({ 
+            id: standardAlias,      
+            label: description || standardAlias 
+        });
       });
 
-      // 2. Capture Logic
+      // B) CAPTURAR EL CÓDIGO GENERADO
       const fullText = document.getElementById("output-area").value;
       let logicDef = "";
       if (fullText.includes("SELECT * FROM")) {
@@ -42,23 +40,94 @@ document.addEventListener("DOMContentLoaded", () => {
         logicDef = fullText.substring(start, end).trim();
       }
 
-      // 3. Save
+      // C) CAPTURAR EL ESTADO DE LA INTERFAZ (UI STATE) - ¡ESTO ES LO NUEVO!
+      // Guardamos cada valor de cada input para poder restaurarlo al editar
+      const uiState = {
+          op1: {
+              pred: document.getElementById("op1-predicate").value,
+              existingName: document.getElementById("op1-existing-name").value,
+              args: getArgsValues("op1") // Función auxiliar definida abajo
+          },
+          op2: {
+              pred: document.getElementById("op2-predicate").value,
+              existingName: document.getElementById("op2-existing-name").value,
+              args: getArgsValues("op2")
+          },
+          relation: {
+              type: document.querySelector('input[name="temp-relation"]:checked').value,
+              seqOrder: document.getElementById("seq-order").value,
+              seqGap: document.getElementById("seq-max-gap").value,
+              overlapType: document.getElementById("overlap-type").value,
+              overlapDelta: document.getElementById("overlap-delta").value,
+              overlapEpsilon: document.getElementById("overlap-epsilon").value
+          },
+          constraints: getConstraintsState(), // Función auxiliar definida abajo
+          projections: getProjectionsState(), // Función auxiliar definida abajo
+          exclusion: document.getElementById("exclusion-mode").checked,
+          projStart: document.getElementById("proj-start-source").value,
+          projEnd: document.getElementById("proj-end-source").value
+      };
+
+      // D) GUARDAR EN LOCALSTORAGE
       const eventData = {
         name: eventName,
         outputSchema: outputSchema,
         logicDefinition: logicDef,
+        uiState: uiState, // Guardamos la configuración visual
         date: new Date().toISOString(),
       };
 
       let library = JSON.parse(localStorage.getItem("iseql_library") || "[]");
-      library = library.filter(e => e.name !== eventName);
-      library.push(eventData);
+      // Si ya existe, lo sobrescribimos manteniendo su posición si es posible, o filtrando
+      const existingIdx = library.findIndex(e => e.name === eventName);
+      if (existingIdx >= 0) {
+          library[existingIdx] = eventData;
+      } else {
+          library.push(eventData);
+      }
+      
       localStorage.setItem("iseql_library", JSON.stringify(library));
 
-      alert(`Saved "${eventName}" with ${outputSchema.length} output fields!`);
+      alert(`Saved "${eventName}" successfully!`);
       updateDropdowns();
       renderLibraryList();
     });
+  }
+
+  // FUNCIONES AUXILIARES PARA CAPTURAR ESTADO (Pégalas justo después del saveBtn)
+  function getArgsValues(prefix) {
+      const args = {};
+      const container = document.getElementById(`${prefix}-args-container`);
+      if (container) {
+          container.querySelectorAll('input').forEach(input => {
+              if (input.value) args[input.dataset.fieldId] = input.value;
+          });
+      }
+      return args;
+  }
+
+  function getConstraintsState() {
+      const list = [];
+      document.querySelectorAll(".constraint-row").forEach(row => {
+          list.push({
+              op1: row.querySelector(".c-op1").value,
+              operator: row.querySelector(".c-operator").value,
+              op2: row.querySelector(".c-op2").value,
+              modifier: row.querySelector(".c-modifier").value
+          });
+      });
+      return list;
+  }
+
+  function getProjectionsState() {
+      const list = [];
+      document.querySelectorAll(".proj-row").forEach(row => {
+          list.push({
+              source: row.querySelector(".proj-source").value,
+              alias: row.querySelector(".proj-alias").value
+          });
+      });
+      return list;
   }
 
   function updateDropdowns() {
@@ -625,5 +694,248 @@ $$ LANGUAGE plpgsql;`;
         nameInput.value = "";
       }
     }
+  }
+
+  // --- INICIO FUNCIONALIDAD QoL (COPIAR Y BACKUP) ---
+
+  // 1. Funcionalidad Copiar al Portapapeles
+  const copyBtn = document.getElementById("copy-code-btn");
+  if (copyBtn) {
+    copyBtn.addEventListener("click", () => {
+      const textArea = document.getElementById("output-area");
+      textArea.select();
+      document.execCommand("copy");
+      alert("Code copied to clipboard.");
+    });
+  }
+
+  // --- BLOQUE FINAL: EDITAR Y BACKUP INTELIGENTE ---
+
+  // 1. LOGICA DE EDITAR (Carga el evento en la pantalla para modificarlo)
+  // 2. REEMPLAZA TU LOGICA DE EDITAR CON ESTA VERSIÓN DE AUTOCOMPLETADO:
+
+  const editBtn = document.getElementById("edit-selected-btn");
+  if (editBtn) {
+    editBtn.addEventListener("click", function() {
+        const select = document.getElementById("saved-events-dropdown");
+        const selectedIndex = select.value;
+
+        if (selectedIndex === "" || selectedIndex === null) {
+            alert("Please select an event to edit.");
+            return;
+        }
+
+        const library = JSON.parse(localStorage.getItem("iseql_library") || "[]");
+        const evt = library[selectedIndex];
+        
+        // Cargar Nombre
+        document.getElementById("event-name").value = evt.name;
+
+        // VERIFICAR SI TIENE ESTADO UI GUARDADO (Eventos antiguos no tendrán esto)
+        if (!evt.uiState) {
+            alert("This is an old event without UI data saved. Only the code is available.");
+            document.getElementById("output-area").value = evt.logicDefinition;
+            return;
+        }
+
+        const ui = evt.uiState;
+
+        // --- RESTAURAR PASO 1 (Operandos) ---
+        restoreOperand("op1", ui.op1);
+        restoreOperand("op2", ui.op2);
+
+        // --- RESTAURAR PASO 2 (Relaciones) ---
+        const radios = document.getElementsByName("temp-relation");
+        radios.forEach(r => {
+            if (r.value === ui.relation.type) r.checked = true;
+        });
+        // Forzar actualización visual
+        const event = new Event("change");
+        radios[0].dispatchEvent(event); 
+
+        if (ui.relation.type === "sequential") {
+            document.getElementById("seq-order").value = ui.relation.seqOrder;
+            document.getElementById("seq-max-gap").value = ui.relation.seqGap;
+        } else {
+            document.getElementById("overlap-type").value = ui.relation.overlapType;
+            // Disparar cambio para actualizar labels
+            document.getElementById("overlap-type").dispatchEvent(new Event("change"));
+            document.getElementById("overlap-delta").value = ui.relation.overlapDelta;
+            document.getElementById("overlap-epsilon").value = ui.relation.overlapEpsilon;
+        }
+
+        // --- RESTAURAR PASO 3 (Constraints) ---
+        document.getElementById("constraints-list").innerHTML = ""; // Limpiar
+        if (ui.constraints) {
+            ui.constraints.forEach(c => {
+                addConstraintRow(c); // Función auxiliar abajo
+            });
+        }
+        document.getElementById("exclusion-mode").checked = ui.exclusion;
+
+        // --- RESTAURAR PASO 4 (Projections) ---
+        document.getElementById("projection-list").innerHTML = ""; // Limpiar
+        // Restaurar selectores de Start/End
+        if (ui.projStart) document.getElementById("proj-start-source").value = ui.projStart;
+        if (ui.projEnd) document.getElementById("proj-end-source").value = ui.projEnd;
+
+        if (ui.projections) {
+            ui.projections.forEach(p => {
+                addProjectionRow(p.source, p.alias); // Usamos tu función existente
+            });
+        }
+
+        alert(`Event "${evt.name}" fully loaded into the editor!`);
+    });
+  }
+
+  // --- FUNCIONES AUXILIARES PARA EDITAR (Pégalas al final) ---
+
+  function restoreOperand(prefix, data) {
+      const select = document.getElementById(`${prefix}-predicate`);
+      select.value = data.pred;
+      // Disparar el evento change para que aparezcan los inputs de argumentos
+      select.dispatchEvent(new Event("change"));
+
+      if (data.pred === "EXISTING") {
+          document.getElementById(`${prefix}-existing-name`).value = data.existingName;
+          // Disparar cambio si fuera necesario para cargar esquema del evento existente
+          document.getElementById(`${prefix}-existing-name`).dispatchEvent(new Event("input")); 
+      }
+
+      // Rellenar argumentos (necesitamos un pequeño timeout para que el DOM se cree tras el 'change')
+      setTimeout(() => {
+          const container = document.getElementById(`${prefix}-args-container`);
+          if (container && data.args) {
+              Object.keys(data.args).forEach(fieldId => {
+                  const input = container.querySelector(`input[data-field-id="${fieldId}"]`);
+                  if (input) input.value = data.args[fieldId];
+              });
+          }
+      }, 50);
+  }
+
+  function addConstraintRow(data) {
+      // Simulamos el clic en el botón de añadir
+      const addBtn = document.getElementById("add-constraint-btn");
+      // Creamos la fila manualmente reutilizando la lógica o clickeando
+      // Para hacerlo limpio, copiamos la lógica de creación aquí brevemente:
+      
+      const constraintsList = document.getElementById("constraints-list");
+      const row = document.createElement("div");
+      row.className = "constraint-row input-group";
+      row.style.display = "flex";
+      row.style.gap = "5px";
+      row.style.marginBottom = "10px";
+      const variableOptionsHTML = generateVariableOptionsHTML(); // Usa tu función existente
+
+      row.innerHTML = `
+            <select class="c-op1" style="flex:1">${variableOptionsHTML}</select>
+            <select class="c-operator" style="width:60px">
+                <option value="=">=</option>
+                <option value="!=">!=</option>
+                <option value="<">&lt;</option>
+                <option value=">">&gt;</option>
+                <option value="<=">&le;</option>
+                <option value=">=">&ge;</option>
+            </select>
+            <select class="c-op2" style="flex:1">${variableOptionsHTML}</select>
+            <input type="text" class="c-modifier" placeholder="+0" style="width:50px; text-align:center;">
+            <button class="btn remove-btn" style="background:#e74c3c; width:auto; padding: 0 10px;">X</button>
+      `;
+      
+      // Asignar valores
+      row.querySelector(".c-op1").value = data.op1;
+      row.querySelector(".c-operator").value = data.operator;
+      row.querySelector(".c-op2").value = data.op2;
+      row.querySelector(".c-modifier").value = data.modifier;
+
+      row.querySelector(".remove-btn").addEventListener("click", () => row.remove());
+      constraintsList.appendChild(row);
+  }
+
+  // Función auxiliar para añadir filas en modo edición
+  function addProjectionRowForEdit(id, label) {
+    const row = document.createElement("div");
+    row.className = "proj-row input-group";
+    row.style.display = "flex";
+    row.style.gap = "10px";
+    row.style.marginBottom = "10px";
+    
+    // En modo edición no sabemos la fuente exacta (M1.arg1?), así que mostramos un selector genérico
+    const optionsHTML = generateVariableOptionsHTML();
+
+    row.innerHTML = `
+        <div style="display:flex; align-items:center; background:#eee; padding:0 10px; border:1px solid #ccc; border-radius:4px; font-weight:bold; color:#555;">
+            ${id}
+        </div>
+        <select class="proj-source" style="flex:2">
+             <option value="" disabled selected>(Select source if changing)</option>
+             ${optionsHTML}
+        </select>
+        <input type="text" class="proj-alias" value="${label}" style="flex:1">
+        <button class="btn remove-btn" style="background:#e74c3c; width:auto; padding: 0 10px;">X</button>
+    `;
+    row.querySelector(".remove-btn").addEventListener("click", () => row.remove());
+    document.getElementById("projection-list").appendChild(row);
+  }
+
+  // 2. BACKUP INTELIGENTE (Uno o Todos)
+  const dlBtn = document.getElementById("download-backup-btn");
+  if (dlBtn) {
+    dlBtn.addEventListener("click", () => {
+        const select = document.getElementById("saved-events-dropdown");
+        const selectedIndex = select.value;
+        const library = JSON.parse(localStorage.getItem("iseql_library") || "[]");
+        
+        let dataToSave;
+        let fileName;
+
+        if (selectedIndex !== "" && selectedIndex !== null) {
+            // Caso A: Guardar SOLO el seleccionado
+            const evt = library[selectedIndex];
+            dataToSave = [evt]; // Lo guardamos como una lista de 1 elemento para poder importarlo igual
+            fileName = `iseql_event_${evt.name}.json`;
+        } else {
+            // Caso B: Guardar TODO
+            dataToSave = library;
+            fileName = "iseql_library_full_backup.json";
+        }
+
+        const blob = new Blob([JSON.stringify(dataToSave, null, 2)], {type: "application/json"});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = fileName;
+        a.click();
+    });
+  }
+
+  // 3. Funcionalidad Cargar Backup (Upload)
+  const upBtn = document.getElementById("upload-backup-btn");
+  const upInput = document.getElementById("upload-backup-input");
+
+  if (upBtn && upInput) {
+    upBtn.addEventListener("click", () => upInput.click());
+    upInput.addEventListener("change", (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            try {
+                // Validar que sea JSON
+                JSON.parse(ev.target.result); 
+                // Guardar en memoria local
+                localStorage.setItem("iseql_library", ev.target.result);
+                alert("Library loaded successfully.");
+                // Refrescar la interfaz
+                updateDropdowns();
+                renderLibraryList();
+            } catch (err) {
+                alert("Invalid JSON file.");
+            }
+        };
+        reader.readAsText(file);
+    });
   }
 });
