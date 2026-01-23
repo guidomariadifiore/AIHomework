@@ -4,7 +4,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // ==========================================
 
   updateDropdowns();
-  renderLibraryList();
+  renderSavedEventsManager();
 
   // Initialize UI on load
   ["op1", "op2"].forEach(prefix => {
@@ -12,26 +12,28 @@ document.addEventListener("DOMContentLoaded", () => {
     renderArgumentInputs(prefix);
   });
 
-  // 1. REEMPLAZA TU saveBtn ACTUAL CON ESTE BLOQUE MEJORADO:
-  
   const saveBtn = document.getElementById("save-event-btn");
   if (saveBtn) {
     saveBtn.addEventListener("click", () => {
       const eventName = document.getElementById("event-name").value;
       if (!eventName) return alert("Name required.");
 
-      // A) CAPTURAR EL ESQUEMA DE SALIDA (Para usarlo en otros eventos)
+      // 1. Capture the Dynamic Schema
       let outputSchema = [];
-      document.querySelectorAll(".proj-row").forEach((row, index) => {
-        const description = row.querySelector(".proj-alias").value;
-        const standardAlias = `arg${index + 1}`; 
-        outputSchema.push({ 
-            id: standardAlias,      
-            label: description || standardAlias 
-        });
+      // (Removed argCounter to preserve "M1.arg1" names)
+
+      document.querySelectorAll(".proj-row").forEach((row) => {
+        const source = row.querySelector(".proj-source").value;
+        const userAlias = row.querySelector(".proj-alias").value;
+
+        // FIX: If alias is empty, use the full source (e.g. M1.arg1) as the ID
+        // We use the raw string with dot. 
+        const finalId = userAlias ? userAlias : source;
+
+        outputSchema.push({ id: finalId, label: userAlias || finalId });
       });
 
-      // B) CAPTURAR EL CÓDIGO GENERADO
+      // 2. Capture Logic
       const fullText = document.getElementById("output-area").value;
       let logicDef = "";
       if (fullText.includes("SELECT * FROM")) {
@@ -40,94 +42,82 @@ document.addEventListener("DOMContentLoaded", () => {
         logicDef = fullText.substring(start, end).trim();
       }
 
-      // C) CAPTURAR EL ESTADO DE LA INTERFAZ (UI STATE) - ¡ESTO ES LO NUEVO!
-      // Guardamos cada valor de cada input para poder restaurarlo al editar
       const uiState = {
-          op1: {
-              pred: document.getElementById("op1-predicate").value,
-              existingName: document.getElementById("op1-existing-name").value,
-              args: getArgsValues("op1") // Función auxiliar definida abajo
-          },
-          op2: {
-              pred: document.getElementById("op2-predicate").value,
-              existingName: document.getElementById("op2-existing-name").value,
-              args: getArgsValues("op2")
-          },
-          relation: {
-              type: document.querySelector('input[name="temp-relation"]:checked').value,
-              seqOrder: document.getElementById("seq-order").value,
-              seqGap: document.getElementById("seq-max-gap").value,
-              overlapType: document.getElementById("overlap-type").value,
-              overlapDelta: document.getElementById("overlap-delta").value,
-              overlapEpsilon: document.getElementById("overlap-epsilon").value
-          },
-          constraints: getConstraintsState(), // Función auxiliar definida abajo
-          projections: getProjectionsState(), // Función auxiliar definida abajo
-          exclusion: document.getElementById("exclusion-mode").checked,
-          projStart: document.getElementById("proj-start-source").value,
-          projEnd: document.getElementById("proj-end-source").value
+        op1: {
+          pred: document.getElementById("op1-predicate").value,
+          existName: document.getElementById("op1-existing-name").value,
+          args: getArgsValues("op1") // Función helper abajo
+        },
+        op2: {
+          pred: document.getElementById("op2-predicate").value,
+          existName: document.getElementById("op2-existing-name").value,
+          args: getArgsValues("op2")
+        },
+        relation: {
+          type: document.querySelector('input[name="temp-relation"]:checked').value,
+          seqOrder: document.getElementById("seq-order").value,
+          seqGap: document.getElementById("seq-max-gap").value,
+          overlapType: document.getElementById("overlap-type").value,
+          delta: document.getElementById("overlap-delta").value,
+          epsilon: document.getElementById("overlap-epsilon").value
+        },
+        constraints: [],
+        exclusion: document.getElementById("exclusion-mode").checked,
+        projection: {
+          start: document.getElementById("proj-start-source").value,
+          end: document.getElementById("proj-end-source").value,
+          fields: []
+        }
       };
 
-      // D) GUARDAR EN LOCALSTORAGE
+      // Guardar Constraints
+      document.querySelectorAll(".constraint-row").forEach(row => {
+        uiState.constraints.push({
+          op1: row.querySelector(".c-op1").value,
+          operator: row.querySelector(".c-operator").value,
+          op2: row.querySelector(".c-op2").value,
+          mod: row.querySelector(".c-modifier").value
+        });
+      });
+
+      // Guardar Campos de Proyección extra
+      document.querySelectorAll(".proj-row").forEach(row => {
+        uiState.projection.fields.push({
+          source: row.querySelector(".proj-source").value,
+          alias: row.querySelector(".proj-alias").value
+        });
+      });
+
+      // 3. Save
       const eventData = {
         name: eventName,
         outputSchema: outputSchema,
         logicDefinition: logicDef,
-        uiState: uiState, // Guardamos la configuración visual
+        uiState: uiState,
         date: new Date().toISOString(),
       };
 
       let library = JSON.parse(localStorage.getItem("iseql_library") || "[]");
-      // Si ya existe, lo sobrescribimos manteniendo su posición si es posible, o filtrando
-      const existingIdx = library.findIndex(e => e.name === eventName);
-      if (existingIdx >= 0) {
-          library[existingIdx] = eventData;
-      } else {
-          library.push(eventData);
-      }
-      
+      library = library.filter(e => e.name !== eventName);
+      library.push(eventData);
       localStorage.setItem("iseql_library", JSON.stringify(library));
 
-      alert(`Saved "${eventName}" successfully!`);
+      alert(`Saved "${eventName}" with ${outputSchema.length} output fields!`);
       updateDropdowns();
-      renderLibraryList();
+      renderSavedEventsManager();
     });
   }
 
-  // FUNCIONES AUXILIARES PARA CAPTURAR ESTADO (Pégalas justo después del saveBtn)
   function getArgsValues(prefix) {
-      const args = {};
-      const container = document.getElementById(`${prefix}-args-container`);
-      if (container) {
-          container.querySelectorAll('input').forEach(input => {
-              if (input.value) args[input.dataset.fieldId] = input.value;
-          });
-      }
-      return args;
-  }
-
-  function getConstraintsState() {
-      const list = [];
-      document.querySelectorAll(".constraint-row").forEach(row => {
-          list.push({
-              op1: row.querySelector(".c-op1").value,
-              operator: row.querySelector(".c-operator").value,
-              op2: row.querySelector(".c-op2").value,
-              modifier: row.querySelector(".c-modifier").value
-          });
+    const vals = {};
+    const container = document.getElementById(`${prefix}-args-container`);
+    if (container) {
+      container.querySelectorAll('input').forEach(input => {
+        const fieldId = input.dataset.fieldId;
+        if (input.value) vals[fieldId] = input.value;
       });
-      return list;
-  }
-
-  function getProjectionsState() {
-      const list = [];
-      document.querySelectorAll(".proj-row").forEach(row => {
-          list.push({
-              source: row.querySelector(".proj-source").value,
-              alias: row.querySelector(".proj-alias").value
-          });
-      });
-      return list;
+    }
+    return vals;
   }
 
   function updateDropdowns() {
@@ -333,44 +323,25 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // REPLACE the existing updateOverlapInputs function in iseql-logic.js
-
   function updateOverlapInputs() {
     const type = overlapTypeSelect.value;
-    const containerEpsilon = document.getElementById("container-epsilon");
-    const labelDelta = document.getElementById("label-delta");
-    const labelEpsilon = document.getElementById("label-epsilon");
-
-    // Default visibility
     containerEpsilon.style.display = "block";
     document.getElementById("overlap-delta").parentElement.style.display = "block";
-
-    // Dynamic Labels based on the PDF definitions
-    switch (type) {
-      case "DJ": // M1 inside M2
-        labelDelta.textContent = "Max Start Diff (M1 starts after M2) [δ]";
-        labelEpsilon.textContent = "Max End Diff (M1 ends before M2) [ε]";
-        break;
-      case "RDJ": // M2 inside M1 (NEW)
-        labelDelta.textContent = "Max Start Diff (M2 starts after M1) [δ]";
-        labelEpsilon.textContent = "Max End Diff (M2 ends before M1) [ε]";
-        break;
-      case "LOJ": // M1 starts before M2
-        labelDelta.textContent = "Max Start Delay (M2 starts after M1) [δ]";
-        labelEpsilon.textContent = "Max End Delay (M2 ends after M1) [ε]";
-        break;
-      case "ROJ": // M2 starts before M1 (NEW)
-        labelDelta.textContent = "Max Start Delay (M1 starts after M2) [δ]";
-        labelEpsilon.textContent = "Max End Delay (M1 ends after M2) [ε]";
-        break;
-      case "SP": // Start Preceding
-        labelDelta.textContent = "Max Start Distance [δ]";
-        containerEpsilon.style.display = "none"; // SP doesn't use Epsilon
-        break;
-      case "EF": // End Following
-        document.getElementById("overlap-delta").parentElement.style.display = "none"; // EF doesn't use Delta
-        labelEpsilon.textContent = "Max End Distance [ε]";
-        break;
+    if (type === "DJ" || type === "RDJ") {
+      labelDelta.textContent = "Max Start Delay [δ]";
+      labelEpsilon.textContent = "Max End Delay [ε]";
+    } else if (type === "SP") {
+      labelDelta.textContent = "Max Start Delay [δ]";
+      containerEpsilon.style.display = "none";
+    } else if (type === "EF") {
+      document.getElementById("overlap-delta").parentElement.style.display = "none";
+      labelEpsilon.textContent = "Max End Delay [ε]";
+    } else if (type === "ROJ") {
+      labelDelta.textContent = "Start Point Distance [δ]";
+      labelEpsilon.textContent = "End Point Distance [ε]";
+    } else {
+      labelDelta.textContent = "Start Point Distance [δ]";
+      labelEpsilon.textContent = "End Point Distance [ε]";
     }
   }
 
@@ -476,34 +447,18 @@ document.addEventListener("DOMContentLoaded", () => {
       let opCode = order === "before" ? "Bef" : "Aft";
       operatorString = (gap && gap.trim() !== "") ? `${opCode}_{δ=${gap}}` : `${opCode}_{δ=d}`;
     } else {
-      // --- OVERLAPPING / INTERVAL RELATIONS ---
       const type = overlapTypeSelect.value;
       const delta = document.getElementById("overlap-delta").value;
       const epsilon = document.getElementById("overlap-epsilon").value;
       let params = [];
+      const dVal = delta ? delta : "d";
+      const eVal = epsilon ? epsilon : "d";
 
-      // "d" is the algebra symbol for Infinity/Max in the paper
-      const dVal = delta && delta.trim() !== "" ? delta : "d";
-      const eVal = epsilon && epsilon.trim() !== "" ? epsilon : "d";
+      if (type === "DJ") { params.push(`δ=${dVal}`); params.push(`ε=${eVal}`); }
+      else if (type === "SP") { params.push(`δ=${dVal}`); }
+      else if (type === "EF") { params.push(`ε=${eVal}`); }
+      else { params.push(`δ=${dVal}`); params.push(`ε=${eVal}`); }
 
-      // Logic Mapping based on PDF definitions:
-      // SP uses only Delta
-      // EF uses only Epsilon
-      // DJ, RDJ, LOJ, ROJ use BOTH Delta and Epsilon
-
-      if (type === "SP") {
-        params.push(`δ=${dVal}`);
-      }
-      else if (type === "EF") {
-        params.push(`ε=${eVal}`);
-      }
-      else {
-        // DJ, RDJ, LOJ, ROJ all take two parameters {δ, ε}
-        params.push(`δ=${dVal}`);
-        params.push(`ε=${eVal}`);
-      }
-
-      // The operator string becomes e.g., RDJ_{δ=30, ε=30}
       operatorString = `${type}_{${params.join(", ")}}`;
     }
 
@@ -629,313 +584,230 @@ $$ LANGUAGE plpgsql;`;
     return `σ_{ ${constraints.join(" ∧ ")} }(${alias})`;
   }
 
-  const deleteBtn = document.getElementById("delete-selected-btn");
-  if (deleteBtn) {
-    deleteBtn.addEventListener("click", function () {
-      const select = document.getElementById("saved-events-dropdown");
-      const selectedIndex = select.value;
+  const deleteSavedBtn = document.getElementById("delete-saved-btn");
+  if (deleteSavedBtn) {
+    deleteSavedBtn.addEventListener("click", () => {
+      const select = document.getElementById("saved-events-select");
+      const selectedName = select.value;
 
-      if (selectedIndex === "" || selectedIndex === null) {
+      if (!selectedName) {
         alert("Please select an event to delete.");
         return;
       }
 
-      deleteEvent(parseInt(selectedIndex));
+      if (confirm(`Are you sure you want to delete "${selectedName}"? This cannot be undone.`)) {
+        deleteEvent(selectedName);
+      }
     });
   }
 
-  // Nueva función de renderizado (Modo Dropdown)
-  function renderLibraryList() {
-    const dropdown = document.getElementById("saved-events-dropdown");
-    if (!dropdown) return;
+  function renderSavedEventsManager() {
+    const select = document.getElementById("saved-events-select");
+    if (!select) return;
 
-    dropdown.innerHTML = "";
     const library = JSON.parse(localStorage.getItem("iseql_library") || "[]");
+
+    // Limpiar opciones actuales
+    select.innerHTML = "";
 
     if (library.length === 0) {
       const option = document.createElement("option");
-      option.text = "(No saved events)";
+      option.text = "--- No saved events ---";
       option.value = "";
-      dropdown.appendChild(option);
-      dropdown.disabled = true;
+      select.appendChild(option);
+      select.disabled = true;
       return;
     }
 
-    dropdown.disabled = false;
+    select.disabled = false;
 
-    // Crear opción por defecto
+    // Opción por defecto
     const defaultOption = document.createElement("option");
-    defaultOption.text = "Select an event to manage";
+    defaultOption.text = "--- Select an event to manage ---";
     defaultOption.value = "";
-    dropdown.appendChild(defaultOption);
+    defaultOption.selected = true;
+    defaultOption.disabled = true;
+    select.appendChild(defaultOption);
 
-    library.forEach((evt, index) => {
+    // Rellenar con eventos
+    library.forEach((evt) => {
       const option = document.createElement("option");
-      option.value = index; // Usamos el índice como valor para saber cuál borrar
-      option.text = `${evt.name} (${evt.outputSchema.length} fields)`;
-      dropdown.appendChild(option);
+      option.value = evt.name;
+      // Mostramos Nombre y cuántos campos tiene de salida
+      option.text = `${evt.name} (${evt.outputSchema ? evt.outputSchema.length : 0} fields)`;
+      select.appendChild(option);
     });
   }
 
-  function deleteEvent(index) {
+  function deleteEvent(nameToDelete) {
     let library = JSON.parse(localStorage.getItem("iseql_library") || "[]");
-    const eventName = library[index].name;
+    const newLibrary = library.filter(e => e.name !== nameToDelete);
+    localStorage.setItem("iseql_library", JSON.stringify(newLibrary));
 
-    if (confirm(`Are you sure you want to permanently delete "${eventName}"?`)) {
-      library.splice(index, 1);
-      localStorage.setItem("iseql_library", JSON.stringify(library));
+    // Actualizar UI
+    renderSavedEventsManager();
+    updateDropdowns();
 
-      renderLibraryList(); // Actualizar el dropdown de arriba
-      updateDropdowns();   // Actualizar los selectores del Paso 1
-
-      // Limpiar el input de nombre si coincidía con el borrado
-      const nameInput = document.getElementById("event-name");
-      if (nameInput.value === eventName) {
-        nameInput.value = "";
-      }
-    }
-  }
-
-  // --- INICIO FUNCIONALIDAD QoL (COPIAR Y BACKUP) ---
-
-  // 1. Funcionalidad Copiar al Portapapeles
-  const copyBtn = document.getElementById("copy-code-btn");
-  if (copyBtn) {
-    copyBtn.addEventListener("click", () => {
-      const textArea = document.getElementById("output-area");
-      textArea.select();
-      document.execCommand("copy");
-      alert("Code copied to clipboard.");
-    });
-  }
-
-  // --- BLOQUE FINAL: EDITAR Y BACKUP INTELIGENTE ---
-
-  // 1. LOGICA DE EDITAR (Carga el evento en la pantalla para modificarlo)
-  // 2. REEMPLAZA TU LOGICA DE EDITAR CON ESTA VERSIÓN DE AUTOCOMPLETADO:
-
-  const editBtn = document.getElementById("edit-selected-btn");
-  if (editBtn) {
-    editBtn.addEventListener("click", function() {
-        const select = document.getElementById("saved-events-dropdown");
-        const selectedIndex = select.value;
-
-        if (selectedIndex === "" || selectedIndex === null) {
-            alert("Please select an event to edit.");
-            return;
-        }
-
-        const library = JSON.parse(localStorage.getItem("iseql_library") || "[]");
-        const evt = library[selectedIndex];
-        
-        // Cargar Nombre
-        document.getElementById("event-name").value = evt.name;
-
-        // VERIFICAR SI TIENE ESTADO UI GUARDADO (Eventos antiguos no tendrán esto)
-        if (!evt.uiState) {
-            alert("This is an old event without UI data saved. Only the code is available.");
-            document.getElementById("output-area").value = evt.logicDefinition;
-            return;
-        }
-
-        const ui = evt.uiState;
-
-        // --- RESTAURAR PASO 1 (Operandos) ---
-        restoreOperand("op1", ui.op1);
-        restoreOperand("op2", ui.op2);
-
-        // --- RESTAURAR PASO 2 (Relaciones) ---
-        const radios = document.getElementsByName("temp-relation");
-        radios.forEach(r => {
-            if (r.value === ui.relation.type) r.checked = true;
-        });
-        // Forzar actualización visual
-        const event = new Event("change");
-        radios[0].dispatchEvent(event); 
-
-        if (ui.relation.type === "sequential") {
-            document.getElementById("seq-order").value = ui.relation.seqOrder;
-            document.getElementById("seq-max-gap").value = ui.relation.seqGap;
-        } else {
-            document.getElementById("overlap-type").value = ui.relation.overlapType;
-            // Disparar cambio para actualizar labels
-            document.getElementById("overlap-type").dispatchEvent(new Event("change"));
-            document.getElementById("overlap-delta").value = ui.relation.overlapDelta;
-            document.getElementById("overlap-epsilon").value = ui.relation.overlapEpsilon;
-        }
-
-        // --- RESTAURAR PASO 3 (Constraints) ---
-        document.getElementById("constraints-list").innerHTML = ""; // Limpiar
-        if (ui.constraints) {
-            ui.constraints.forEach(c => {
-                addConstraintRow(c); // Función auxiliar abajo
-            });
-        }
-        document.getElementById("exclusion-mode").checked = ui.exclusion;
-
-        // --- RESTAURAR PASO 4 (Projections) ---
-        document.getElementById("projection-list").innerHTML = ""; // Limpiar
-        // Restaurar selectores de Start/End
-        if (ui.projStart) document.getElementById("proj-start-source").value = ui.projStart;
-        if (ui.projEnd) document.getElementById("proj-end-source").value = ui.projEnd;
-
-        if (ui.projections) {
-            ui.projections.forEach(p => {
-                addProjectionRow(p.source, p.alias); // Usamos tu función existente
-            });
-        }
-
-        alert(`Event "${evt.name}" fully loaded into the editor!`);
-    });
-  }
-
-  // --- FUNCIONES AUXILIARES PARA EDITAR (Pégalas al final) ---
-
-  function restoreOperand(prefix, data) {
+    // Limpiar selección de operandos si usaban el evento borrado
+    ["op1", "op2"].forEach(prefix => {
       const select = document.getElementById(`${prefix}-predicate`);
-      select.value = data.pred;
-      // Disparar el evento change para que aparezcan los inputs de argumentos
-      select.dispatchEvent(new Event("change"));
+      const input = document.getElementById(`${prefix}-existing-name`);
 
-      if (data.pred === "EXISTING") {
-          document.getElementById(`${prefix}-existing-name`).value = data.existingName;
-          // Disparar cambio si fuera necesario para cargar esquema del evento existente
-          document.getElementById(`${prefix}-existing-name`).dispatchEvent(new Event("input")); 
+      if (select.value === "EXISTING" && input.value === nameToDelete) {
+        select.value = "in";
+        document.getElementById(`${prefix}-existing-container`).classList.add("hidden");
+        input.value = "";
+        select.dispatchEvent(new Event('change'));
+      }
+    });
+
+    alert(`Event "${nameToDelete}" has been deleted.`);
+  }
+
+  const loadEventBtn = document.getElementById("load-event-btn");
+  if (loadEventBtn) {
+      loadEventBtn.addEventListener("click", () => {
+          const select = document.getElementById("saved-events-select");
+          const eventName = select.value;
+          if(!eventName) return alert("Select an event to edit.");
+
+          const library = JSON.parse(localStorage.getItem("iseql_library") || "[]");
+          const evt = library.find(e => e.name === eventName);
+
+          if (!evt) return;
+          if (!evt.uiState) {
+              return alert("This event was saved with an older version and cannot be edited visually.");
+          }
+
+          loadUIFromState(evt.name, evt.uiState);
+          alert(`Event "${evt.name}" loaded for editing.`);
+      });
+  }
+
+  function loadUIFromState(name, state) {
+      // 0. Set Name
+      document.getElementById("event-name").value = name;
+
+      // 1. Operands Setup
+      setupOperand("op1", state.op1);
+      setupOperand("op2", state.op2);
+
+      // 2. Relations
+      const radios = document.getElementsByName("temp-relation");
+      radios.forEach(r => {
+          if (r.value === state.relation.type) r.checked = true;
+      });
+      // Forzar actualización de UI para mostrar/ocultar paneles
+      // Llamamos a la función existente updateRelationUI
+      const relationsRadio = document.querySelector('input[name="temp-relation"]:checked');
+      if(relationsRadio) relationsRadio.dispatchEvent(new Event('change'));
+
+      if (state.relation.type === "sequential") {
+          document.getElementById("seq-order").value = state.relation.seqOrder;
+          document.getElementById("seq-max-gap").value = state.relation.seqGap;
+      } else {
+          document.getElementById("overlap-type").value = state.relation.overlapType;
+          // Disparar cambio para etiquetas
+          document.getElementById("overlap-type").dispatchEvent(new Event('change'));
+          
+          document.getElementById("overlap-delta").value = state.relation.delta;
+          document.getElementById("overlap-epsilon").value = state.relation.epsilon;
       }
 
-      // Rellenar argumentos (necesitamos un pequeño timeout para que el DOM se cree tras el 'change')
+      // 3. Constraints (Reconstruir lista)
+      const cList = document.getElementById("constraints-list");
+      cList.innerHTML = ""; // Limpiar
+      state.constraints.forEach(c => {
+          // Simulamos click en "Add Constraint" y luego llenamos
+          document.getElementById("add-constraint-btn").click();
+          // Coger la última fila añadida
+          const lastRow = cList.lastElementChild;
+          if(lastRow) {
+              lastRow.querySelector(".c-op1").value = c.op1;
+              lastRow.querySelector(".c-operator").value = c.operator;
+              lastRow.querySelector(".c-op2").value = c.op2;
+              lastRow.querySelector(".c-modifier").value = c.mod;
+          }
+      });
+
+      // 4. Exclusion
+      document.getElementById("exclusion-mode").checked = state.exclusion;
+
+      // 5. Projections
+      const pList = document.getElementById("projection-list");
+      pList.innerHTML = ""; // Limpiar
+      state.projection.fields.forEach(p => {
+          addProjectionRow(p.source, p.alias); // Usamos la función existente
+      });
+      
+      document.getElementById("proj-start-source").value = state.projection.start;
+      document.getElementById("proj-end-source").value = state.projection.end;
+      
+      // Auto-generar el código al cargar para ver el resultado actual
+      document.getElementById("generate-btn").click();
+  }
+
+  function setupOperand(prefix, opState) {
+      const select = document.getElementById(`${prefix}-predicate`);
+      select.value = opState.pred;
+      
+      // Disparar evento para mostrar inputs de argumentos o nombre existente
+      select.dispatchEvent(new Event('change'));
+
+      if (opState.pred === "EXISTING") {
+          document.getElementById(`${prefix}-existing-name`).value = opState.existName;
+          // Al poner el nombre, deberíamos actualizar el esquema interno
+          // Simulamos el evento de input o change si fuera necesario, 
+          // pero updateDropdowns y change del select ya manejan parte de esto.
+          // Forzamos actualización de inputs de argumentos:
+          const existingInput = document.getElementById(`${prefix}-existing-name`);
+          // Un pequeño hack: llamar a updateSchemaInfoBox manualmente si es necesario,
+          // pero el listener de change ya lo hace.
+      }
+
+      // Rellenar Argumentos Dinámicos
+      // Necesitamos un pequeño timeout o asegurar que renderArgumentInputs acabó
       setTimeout(() => {
           const container = document.getElementById(`${prefix}-args-container`);
-          if (container && data.args) {
-              Object.keys(data.args).forEach(fieldId => {
-                  const input = container.querySelector(`input[data-field-id="${fieldId}"]`);
-                  if (input) input.value = data.args[fieldId];
+          if (opState.args && container) {
+              Object.keys(opState.args).forEach(key => {
+                  const input = container.querySelector(`input[data-field-id="${key}"]`);
+                  if (input) input.value = opState.args[key];
               });
           }
+          
+          // Actualizar dropdowns globales de variables por si cambiaron los alias
+          refreshAllVariableDropdowns();
       }, 50);
   }
 
-  function addConstraintRow(data) {
-      // Simulamos el clic en el botón de añadir
-      const addBtn = document.getElementById("add-constraint-btn");
-      // Creamos la fila manualmente reutilizando la lógica o clickeando
-      // Para hacerlo limpio, copiamos la lógica de creación aquí brevemente:
-      
-      const constraintsList = document.getElementById("constraints-list");
-      const row = document.createElement("div");
-      row.className = "constraint-row input-group";
-      row.style.display = "flex";
-      row.style.gap = "5px";
-      row.style.marginBottom = "10px";
-      const variableOptionsHTML = generateVariableOptionsHTML(); // Usa tu función existente
+  const copyBtn = document.getElementById("copy-btn");
+  if (copyBtn) {
+      copyBtn.addEventListener("click", () => {
+          const outputArea = document.getElementById("output-area");
+          
+          if (!outputArea.value.trim()) {
+              alert("Generate the code first!");
+              return;
+          }
 
-      row.innerHTML = `
-            <select class="c-op1" style="flex:1">${variableOptionsHTML}</select>
-            <select class="c-operator" style="width:60px">
-                <option value="=">=</option>
-                <option value="!=">!=</option>
-                <option value="<">&lt;</option>
-                <option value=">">&gt;</option>
-                <option value="<=">&le;</option>
-                <option value=">=">&ge;</option>
-            </select>
-            <select class="c-op2" style="flex:1">${variableOptionsHTML}</select>
-            <input type="text" class="c-modifier" placeholder="+0" style="width:50px; text-align:center;">
-            <button class="btn remove-btn" style="background:#e74c3c; width:auto; padding: 0 10px;">X</button>
-      `;
-      
-      // Asignar valores
-      row.querySelector(".c-op1").value = data.op1;
-      row.querySelector(".c-operator").value = data.operator;
-      row.querySelector(".c-op2").value = data.op2;
-      row.querySelector(".c-modifier").value = data.modifier;
-
-      row.querySelector(".remove-btn").addEventListener("click", () => row.remove());
-      constraintsList.appendChild(row);
-  }
-
-  // Función auxiliar para añadir filas en modo edición
-  function addProjectionRowForEdit(id, label) {
-    const row = document.createElement("div");
-    row.className = "proj-row input-group";
-    row.style.display = "flex";
-    row.style.gap = "10px";
-    row.style.marginBottom = "10px";
-    
-    // En modo edición no sabemos la fuente exacta (M1.arg1?), así que mostramos un selector genérico
-    const optionsHTML = generateVariableOptionsHTML();
-
-    row.innerHTML = `
-        <div style="display:flex; align-items:center; background:#eee; padding:0 10px; border:1px solid #ccc; border-radius:4px; font-weight:bold; color:#555;">
-            ${id}
-        </div>
-        <select class="proj-source" style="flex:2">
-             <option value="" disabled selected>(Select source if changing)</option>
-             ${optionsHTML}
-        </select>
-        <input type="text" class="proj-alias" value="${label}" style="flex:1">
-        <button class="btn remove-btn" style="background:#e74c3c; width:auto; padding: 0 10px;">X</button>
-    `;
-    row.querySelector(".remove-btn").addEventListener("click", () => row.remove());
-    document.getElementById("projection-list").appendChild(row);
-  }
-
-  // 2. BACKUP INTELIGENTE (Uno o Todos)
-  const dlBtn = document.getElementById("download-backup-btn");
-  if (dlBtn) {
-    dlBtn.addEventListener("click", () => {
-        const select = document.getElementById("saved-events-dropdown");
-        const selectedIndex = select.value;
-        const library = JSON.parse(localStorage.getItem("iseql_library") || "[]");
-        
-        let dataToSave;
-        let fileName;
-
-        if (selectedIndex !== "" && selectedIndex !== null) {
-            // Caso A: Guardar SOLO el seleccionado
-            const evt = library[selectedIndex];
-            dataToSave = [evt]; // Lo guardamos como una lista de 1 elemento para poder importarlo igual
-            fileName = `iseql_event_${evt.name}.json`;
-        } else {
-            // Caso B: Guardar TODO
-            dataToSave = library;
-            fileName = "iseql_library_full_backup.json";
-        }
-
-        const blob = new Blob([JSON.stringify(dataToSave, null, 2)], {type: "application/json"});
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = fileName;
-        a.click();
-    });
-  }
-
-  // 3. Funcionalidad Cargar Backup (Upload)
-  const upBtn = document.getElementById("upload-backup-btn");
-  const upInput = document.getElementById("upload-backup-input");
-
-  if (upBtn && upInput) {
-    upBtn.addEventListener("click", () => upInput.click());
-    upInput.addEventListener("change", (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-            try {
-                // Validar que sea JSON
-                JSON.parse(ev.target.result); 
-                // Guardar en memoria local
-                localStorage.setItem("iseql_library", ev.target.result);
-                alert("Library loaded successfully.");
-                // Refrescar la interfaz
-                updateDropdowns();
-                renderLibraryList();
-            } catch (err) {
-                alert("Invalid JSON file.");
-            }
-        };
-        reader.readAsText(file);
-    });
+          // API moderna de portapapeles
+          navigator.clipboard.writeText(outputArea.value)
+              .then(() => {
+                  // Feedback visual temporal
+                  const originalText = copyBtn.textContent;
+                  copyBtn.textContent = "Copied! ✓";
+                  copyBtn.style.backgroundColor = "#95a5a6"; // Un gris un poco más claro
+                  
+                  setTimeout(() => {
+                      copyBtn.textContent = originalText;
+                      copyBtn.style.backgroundColor = "#7f8c8d"; // Volver al color original
+                  }, 2000);
+              })
+              .catch(err => {
+                  console.error("Error copying text: ", err);
+                  alert("Failed to copy text.");
+              });
+      });
   }
 });
