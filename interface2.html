@@ -1,3 +1,12 @@
+<!--
+ISEQL Query Builder
+Homework – Artificial Intelligence
+
+HTML structure for the ISEQL event builder UI.
+Defines the layout and input elements; all logic
+is handled in iseql-logic.js.
+-->
+
 <!DOCTYPE html>
 <html lang="en">
 
@@ -94,6 +103,16 @@
                 <button id="delete-saved-btn" class="btn" style="background-color: #e74c3c; white-space: nowrap;">
                     Delete
                 </button>
+            </div>
+
+            <div style="border-top: 1px dashed #ccc; padding-top: 10px; display: flex; gap: 10px;">
+                <button id="export-json-btn" class="btn" style="flex: 1; background-color: #34495e; font-size: 0.9em;">
+                    Save JSON
+                </button>
+                <button id="import-json-btn" class="btn" style="flex: 1; background-color: #34495e; font-size: 0.9em;">
+                    Load JSON
+                </button>
+                <input type="file" id="import-json-input" accept=".json" style="display: none;">
             </div>
             <p style="color: #777; font-size: 0.85em; margin-top: 5px;">Select an event from the list to delete it from
                 storage.</p>

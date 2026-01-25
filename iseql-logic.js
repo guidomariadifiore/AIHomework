@@ -1,39 +1,46 @@
-document.addEventListener("DOMContentLoaded", () => {
-  // ==========================================
-  // 1. INITIALIZATION & MOCK DATABASE
-  // ==========================================
+/**
+ISEQL Query Builder
 
+Homework #2 – Artificial Intelligence
+
+Client-side logic implementation of a visual ISEQL query builder.
+Users can define events, temporal relations, constraints, projections
+and, with those, generate the corresponding ISEQL definition.
+
+Authors: Guido Maria di Fiore, Inés Shanlu Rodríguez, Carla Rubio
+Instructor: Fabio Persia
+**/
+
+// Initialize UI logic once the DOM is fully loaded
+document.addEventListener("DOMContentLoaded", () => {
+  // Load saved events and initialize dropdowns
   updateDropdowns();
   renderSavedEventsManager();
 
-  // Initialize UI on load
+  // Initialize operands (schemas and argument inputs)
   ["op1", "op2"].forEach(prefix => {
     updateSchemaInfoBox(prefix);
     renderArgumentInputs(prefix);
   });
 
+  // Save current event definition and UI state
   const saveBtn = document.getElementById("save-event-btn");
   if (saveBtn) {
     saveBtn.addEventListener("click", () => {
       const eventName = document.getElementById("event-name").value;
       if (!eventName) return alert("Name required.");
 
-      // 1. Capture the Dynamic Schema
       let outputSchema = [];
-      // (Removed argCounter to preserve "M1.arg1" names)
 
       document.querySelectorAll(".proj-row").forEach((row) => {
         const source = row.querySelector(".proj-source").value;
         const userAlias = row.querySelector(".proj-alias").value;
 
-        // FIX: If alias is empty, use the full source (e.g. M1.arg1) as the ID
-        // We use the raw string with dot. 
         const finalId = userAlias ? userAlias : source;
 
         outputSchema.push({ id: finalId, label: userAlias || finalId });
       });
 
-      // 2. Capture Logic
       const fullText = document.getElementById("output-area").value;
       let logicDef = "";
       if (fullText.includes("SELECT * FROM")) {
@@ -46,7 +53,7 @@ document.addEventListener("DOMContentLoaded", () => {
         op1: {
           pred: document.getElementById("op1-predicate").value,
           existName: document.getElementById("op1-existing-name").value,
-          args: getArgsValues("op1") // Función helper abajo
+          args: getArgsValues("op1")
         },
         op2: {
           pred: document.getElementById("op2-predicate").value,
@@ -70,7 +77,6 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       };
 
-      // Guardar Constraints
       document.querySelectorAll(".constraint-row").forEach(row => {
         uiState.constraints.push({
           op1: row.querySelector(".c-op1").value,
@@ -80,7 +86,6 @@ document.addEventListener("DOMContentLoaded", () => {
         });
       });
 
-      // Guardar Campos de Proyección extra
       document.querySelectorAll(".proj-row").forEach(row => {
         uiState.projection.fields.push({
           source: row.querySelector(".proj-source").value,
@@ -88,7 +93,6 @@ document.addEventListener("DOMContentLoaded", () => {
         });
       });
 
-      // 3. Save
       const eventData = {
         name: eventName,
         outputSchema: outputSchema,
@@ -108,6 +112,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // Get filter values entered for an operand
   function getArgsValues(prefix) {
     const vals = {};
     const container = document.getElementById(`${prefix}-args-container`);
@@ -120,6 +125,7 @@ document.addEventListener("DOMContentLoaded", () => {
     return vals;
   }
 
+  // Update predicate dropdowns with saved events from localStorage
   function updateDropdowns() {
     const library = JSON.parse(localStorage.getItem("iseql_library") || "[]");
     const selectors = [
@@ -147,6 +153,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // Handle changes in operand predicates (new vs existing event)
   ["op1", "op2"].forEach((prefix) => {
     const select = document.getElementById(`${prefix}-predicate`);
     if (select) {
@@ -170,11 +177,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-
-  // ==========================================
-  // 2. HELPER: DYNAMIC ALIASING
-  // ==========================================
-
+  // Resolve the alias used for an operand (M1 / M2 or event name)
   function getOperandAlias(prefix) {
     const predSelect = document.getElementById(`${prefix}-predicate`);
     if (!predSelect) return (prefix === 'op1' ? "M1" : "M2");
@@ -186,6 +189,7 @@ document.addEventListener("DOMContentLoaded", () => {
     return (prefix === 'op1' ? "M1" : "M2");
   }
 
+  // Get the schema associated with the selected operand
   function getSchemaForOperand(prefix) {
     const predSelect = document.getElementById(`${prefix}-predicate`);
     if (!predSelect) return [];
@@ -215,23 +219,18 @@ document.addEventListener("DOMContentLoaded", () => {
     return schema;
   }
 
+  // Generate variable options used in constraints and projections
   function generateVariableOptionsHTML() {
     let html = "";
 
-    // FIX: If the field ID contains a dot (e.g. "M1.arg1"), 
-    // it implies it's a bubbled-up name. Show it RAW, without the Alias prefix.
     const formatOption = (prefixStr, alias, field) => {
       if (field.id.includes('.')) {
-        // Example: ID="M1.arg1". Value should be "M1.arg1" (quoted implicitly by usage)
-        // We use quotes in the value to be safe for the constraints logic? 
-        // Actually, let's keep it clean string: "M1.arg1"
         return `<option value='"${field.id}"'>${field.label}</option>`;
       }
-      // Standard Case: "DPE2.arg1"
+
       return `<option value="${alias}.${field.id}">${alias}.${field.label}</option>`;
     };
 
-    // OP 1
     const alias1 = getOperandAlias("op1");
     const m1Schema = getSchemaForOperand("op1");
     html += `<optgroup label="${alias1} Variables">`;
@@ -242,7 +241,6 @@ document.addEventListener("DOMContentLoaded", () => {
     html += `<option value="${alias1}.ef">${alias1} End Frame</option>`;
     html += `</optgroup>`;
 
-    // OP 2
     const alias2 = getOperandAlias("op2");
     const m2Schema = getSchemaForOperand("op2");
     html += `<optgroup label="${alias2} Variables">`;
@@ -256,6 +254,7 @@ document.addEventListener("DOMContentLoaded", () => {
     return html;
   }
 
+  // Refresh all variable selectors when schemas change
   function refreshAllVariableDropdowns() {
     const newOptions = generateVariableOptionsHTML();
     document.querySelectorAll(".c-op1, .c-op2").forEach((select) => {
@@ -266,6 +265,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // Render input fields for operand arguments
   function renderArgumentInputs(prefix) {
     const container = document.getElementById(`${prefix}-args-container`);
     if (!container) return;
@@ -284,6 +284,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // Display the output schema of the selected operand
   function updateSchemaInfoBox(prefix) {
     const schema = getSchemaForOperand(prefix);
     const displayDiv = document.getElementById(`${prefix}-schema-display`);
@@ -298,11 +299,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-
-  // ==========================================
-  // 3. UI LOGIC (Steps 2 & 3)
-  // ==========================================
-
   const relationRadios = document.getElementsByName("temp-relation");
   const seqOptions = document.getElementById("sequential-options");
   const overlapOptions = document.getElementById("overlapping-options");
@@ -311,6 +307,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const labelEpsilon = document.getElementById("label-epsilon");
   const containerEpsilon = document.getElementById("container-epsilon");
 
+  // Show or hide UI options depending on temporal relation
   function updateRelationUI() {
     const selected = document.querySelector('input[name="temp-relation"]:checked').value;
     if (selected === "sequential") {
@@ -323,6 +320,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  // Update overlap parameter labels based on selected type
   function updateOverlapInputs() {
     const type = overlapTypeSelect.value;
     containerEpsilon.style.display = "block";
@@ -349,7 +347,6 @@ document.addEventListener("DOMContentLoaded", () => {
   if (overlapTypeSelect) overlapTypeSelect.addEventListener("change", updateOverlapInputs);
   updateRelationUI();
 
-  // --- CONSTRAINT BUILDER ---
   const addConstraintBtn = document.getElementById("add-constraint-btn");
   const constraintsList = document.getElementById("constraints-list");
 
@@ -385,7 +382,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }, 200);
   }
 
-  // --- PROJECTION BUILDER ---
   const addProjBtn = document.getElementById("add-proj-btn");
   const projList = document.getElementById("projection-list");
 
@@ -395,6 +391,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // Add a new projection field
   function addProjectionRow(defaultValue = null, defaultLabel = "") {
     const row = document.createElement("div");
     row.className = "proj-row input-group";
@@ -423,13 +420,9 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }, 300);
 
-
-  // ==========================================
-  // 4. GENERATION LOGIC
-  // ==========================================
-
   document.getElementById("generate-btn").addEventListener("click", generateISEQL);
 
+  // Generate the final ISEQL query from the current UI state
   function generateISEQL() {
     const currentEventName = document.getElementById("event-name").value;
     const alias1 = getOperandAlias("op1");
@@ -482,16 +475,13 @@ document.addEventListener("DOMContentLoaded", () => {
       const alias = row.querySelector(".proj-alias").value;
 
       let finalAlias = "";
-      // If user provided alias, use it. Otherwise use source (quoted) as alias.
+
       if (alias && alias.trim() !== "") {
         finalAlias = alias;
       } else {
-        // e.g. source="M1.arg1" -> alias="M1.arg1"
-        // We use quotes to make it a valid column identifier
         finalAlias = `"${source.replace(/"/g, '')}"`;
       }
 
-      // If source already has quotes (from Dropdown), keep them.
       projParts.push(`${source} AS ${finalAlias}`);
       returnTypes.push(`${finalAlias} varchar`);
     });
@@ -544,6 +534,7 @@ $$ LANGUAGE plpgsql;`;
     document.getElementById("output-area").value = finalOutput;
   }
 
+  // Build operand expression including filters and nested events
   function buildOperandString(prefix, alias, definitionName) {
     const pred = document.getElementById(`${prefix}-predicate`).value;
     let constraints = [];
@@ -607,7 +598,6 @@ $$ LANGUAGE plpgsql;`;
 
     const library = JSON.parse(localStorage.getItem("iseql_library") || "[]");
 
-    // Limpiar opciones actuales
     select.innerHTML = "";
 
     if (library.length === 0) {
@@ -621,7 +611,6 @@ $$ LANGUAGE plpgsql;`;
 
     select.disabled = false;
 
-    // Opción por defecto
     const defaultOption = document.createElement("option");
     defaultOption.text = "--- Select an event to manage ---";
     defaultOption.value = "";
@@ -629,26 +618,23 @@ $$ LANGUAGE plpgsql;`;
     defaultOption.disabled = true;
     select.appendChild(defaultOption);
 
-    // Rellenar con eventos
     library.forEach((evt) => {
       const option = document.createElement("option");
       option.value = evt.name;
-      // Mostramos Nombre y cuántos campos tiene de salida
       option.text = `${evt.name} (${evt.outputSchema ? evt.outputSchema.length : 0} fields)`;
       select.appendChild(option);
     });
   }
 
+  // Remove an event from localStorage and update the UI
   function deleteEvent(nameToDelete) {
     let library = JSON.parse(localStorage.getItem("iseql_library") || "[]");
     const newLibrary = library.filter(e => e.name !== nameToDelete);
     localStorage.setItem("iseql_library", JSON.stringify(newLibrary));
 
-    // Actualizar UI
     renderSavedEventsManager();
     updateDropdowns();
 
-    // Limpiar selección de operandos si usaban el evento borrado
     ["op1", "op2"].forEach(prefix => {
       const select = document.getElementById(`${prefix}-predicate`);
       const input = document.getElementById(`${prefix}-existing-name`);
@@ -666,148 +652,237 @@ $$ LANGUAGE plpgsql;`;
 
   const loadEventBtn = document.getElementById("load-event-btn");
   if (loadEventBtn) {
-      loadEventBtn.addEventListener("click", () => {
-          const select = document.getElementById("saved-events-select");
-          const eventName = select.value;
-          if(!eventName) return alert("Select an event to edit.");
+    loadEventBtn.addEventListener("click", () => {
+      const select = document.getElementById("saved-events-select");
+      const eventName = select.value;
+      if (!eventName) return alert("Select an event to edit.");
 
-          const library = JSON.parse(localStorage.getItem("iseql_library") || "[]");
-          const evt = library.find(e => e.name === eventName);
+      const library = JSON.parse(localStorage.getItem("iseql_library") || "[]");
+      const evt = library.find(e => e.name === eventName);
 
-          if (!evt) return;
-          if (!evt.uiState) {
-              return alert("This event was saved with an older version and cannot be edited visually.");
-          }
+      if (!evt) return;
+      if (!evt.uiState) {
+        return alert("This event was saved with an older version and cannot be edited visually.");
+      }
 
-          loadUIFromState(evt.name, evt.uiState);
-          alert(`Event "${evt.name}" loaded for editing.`);
-      });
+      loadUIFromState(evt.name, evt.uiState);
+      alert(`Event "${evt.name}" loaded for editing.`);
+    });
   }
 
+  // Restore the UI using a previously saved state
   function loadUIFromState(name, state) {
-      // 0. Set Name
-      document.getElementById("event-name").value = name;
+    document.getElementById("event-name").value = name;
 
-      // 1. Operands Setup
-      setupOperand("op1", state.op1);
-      setupOperand("op2", state.op2);
+    setupOperand("op1", state.op1);
+    setupOperand("op2", state.op2);
 
-      // 2. Relations
-      const radios = document.getElementsByName("temp-relation");
-      radios.forEach(r => {
-          if (r.value === state.relation.type) r.checked = true;
-      });
-      // Forzar actualización de UI para mostrar/ocultar paneles
-      // Llamamos a la función existente updateRelationUI
-      const relationsRadio = document.querySelector('input[name="temp-relation"]:checked');
-      if(relationsRadio) relationsRadio.dispatchEvent(new Event('change'));
+    refreshAllVariableDropdowns();
 
-      if (state.relation.type === "sequential") {
-          document.getElementById("seq-order").value = state.relation.seqOrder;
-          document.getElementById("seq-max-gap").value = state.relation.seqGap;
-      } else {
-          document.getElementById("overlap-type").value = state.relation.overlapType;
-          // Disparar cambio para etiquetas
-          document.getElementById("overlap-type").dispatchEvent(new Event('change'));
-          
-          document.getElementById("overlap-delta").value = state.relation.delta;
-          document.getElementById("overlap-epsilon").value = state.relation.epsilon;
+    const radios = document.getElementsByName("temp-relation");
+    radios.forEach(r => {
+      if (r.value === state.relation.type) r.checked = true;
+    });
+    const relationsRadio = document.querySelector('input[name="temp-relation"]:checked');
+    if (relationsRadio) relationsRadio.dispatchEvent(new Event('change'));
+
+    if (state.relation.type === "sequential") {
+      document.getElementById("seq-order").value = state.relation.seqOrder;
+      document.getElementById("seq-max-gap").value = state.relation.seqGap;
+    } else {
+      document.getElementById("overlap-type").value = state.relation.overlapType;
+      document.getElementById("overlap-type").dispatchEvent(new Event('change'));
+      document.getElementById("overlap-delta").value = state.relation.delta;
+      document.getElementById("overlap-epsilon").value = state.relation.epsilon;
+    }
+
+    const cList = document.getElementById("constraints-list");
+    cList.innerHTML = "";
+
+    state.constraints.forEach(c => {
+      document.getElementById("add-constraint-btn").click();
+      const lastRow = cList.lastElementChild;
+
+      if (lastRow) {
+        const sel1 = lastRow.querySelector(".c-op1");
+        const sel2 = lastRow.querySelector(".c-op2");
+
+        sel1.innerHTML = generateVariableOptionsHTML();
+        sel2.innerHTML = generateVariableOptionsHTML();
+
+        sel1.value = c.op1;
+        lastRow.querySelector(".c-operator").value = c.operator;
+        sel2.value = c.op2;
+        lastRow.querySelector(".c-modifier").value = c.mod;
       }
+    });
 
-      // 3. Constraints (Reconstruir lista)
-      const cList = document.getElementById("constraints-list");
-      cList.innerHTML = ""; // Limpiar
-      state.constraints.forEach(c => {
-          // Simulamos click en "Add Constraint" y luego llenamos
-          document.getElementById("add-constraint-btn").click();
-          // Coger la última fila añadida
-          const lastRow = cList.lastElementChild;
-          if(lastRow) {
-              lastRow.querySelector(".c-op1").value = c.op1;
-              lastRow.querySelector(".c-operator").value = c.operator;
-              lastRow.querySelector(".c-op2").value = c.op2;
-              lastRow.querySelector(".c-modifier").value = c.mod;
-          }
-      });
+    document.getElementById("exclusion-mode").checked = state.exclusion;
 
-      // 4. Exclusion
-      document.getElementById("exclusion-mode").checked = state.exclusion;
+    const pList = document.getElementById("projection-list");
+    pList.innerHTML = "";
+    state.projection.fields.forEach(p => {
+      addProjectionRow(p.source, p.alias);
 
-      // 5. Projections
-      const pList = document.getElementById("projection-list");
-      pList.innerHTML = ""; // Limpiar
-      state.projection.fields.forEach(p => {
-          addProjectionRow(p.source, p.alias); // Usamos la función existente
-      });
-      
-      document.getElementById("proj-start-source").value = state.projection.start;
-      document.getElementById("proj-end-source").value = state.projection.end;
-      
-      // Auto-generar el código al cargar para ver el resultado actual
-      document.getElementById("generate-btn").click();
+      const lastRow = pList.lastElementChild;
+      const sourceSelect = lastRow.querySelector(".proj-source");
+
+      sourceSelect.innerHTML = generateVariableOptionsHTML();
+
+      sourceSelect.value = p.source;
+    });
+
+    const sfSel = document.getElementById("proj-start-source");
+    const efSel = document.getElementById("proj-end-source");
+
+    sfSel.value = state.projection.start;
+    efSel.value = state.projection.end;
+
+    document.getElementById("generate-btn").click();
   }
 
+  // Restore operand configuration (predicate and arguments)
   function setupOperand(prefix, opState) {
-      const select = document.getElementById(`${prefix}-predicate`);
-      select.value = opState.pred;
-      
-      // Disparar evento para mostrar inputs de argumentos o nombre existente
-      select.dispatchEvent(new Event('change'));
+    const select = document.getElementById(`${prefix}-predicate`);
 
-      if (opState.pred === "EXISTING") {
-          document.getElementById(`${prefix}-existing-name`).value = opState.existName;
-          // Al poner el nombre, deberíamos actualizar el esquema interno
-          // Simulamos el evento de input o change si fuera necesario, 
-          // pero updateDropdowns y change del select ya manejan parte de esto.
-          // Forzamos actualización de inputs de argumentos:
-          const existingInput = document.getElementById(`${prefix}-existing-name`);
-          // Un pequeño hack: llamar a updateSchemaInfoBox manualmente si es necesario,
-          // pero el listener de change ya lo hace.
+    let foundOption = false;
+
+    if (opState.pred === "EXISTING") {
+      for (let i = 0; i < select.options.length; i++) {
+        const opt = select.options[i];
+        if (opt.value === "EXISTING" && opt.dataset.realName === opState.existName) {
+          select.selectedIndex = i;
+          foundOption = true;
+          break;
+        }
       }
+    }
 
-      // Rellenar Argumentos Dinámicos
-      // Necesitamos un pequeño timeout o asegurar que renderArgumentInputs acabó
-      setTimeout(() => {
-          const container = document.getElementById(`${prefix}-args-container`);
-          if (opState.args && container) {
-              Object.keys(opState.args).forEach(key => {
-                  const input = container.querySelector(`input[data-field-id="${key}"]`);
-                  if (input) input.value = opState.args[key];
-              });
-          }
-          
-          // Actualizar dropdowns globales de variables por si cambiaron los alias
-          refreshAllVariableDropdowns();
-      }, 50);
+    if (!foundOption) {
+      select.value = opState.pred;
+    }
+
+    select.dispatchEvent(new Event('change'));
+
+    if (opState.pred === "EXISTING") {
+      document.getElementById(`${prefix}-existing-name`).value = opState.existName;
+    }
+
+    setTimeout(() => {
+      const container = document.getElementById(`${prefix}-args-container`);
+      if (opState.args && container) {
+        Object.keys(opState.args).forEach(key => {
+          const input = container.querySelector(`input[data-field-id="${key}"]`);
+          if (input) input.value = opState.args[key];
+        });
+      }
+    }, 50);
   }
 
+  // Copy generated code to clipboard
   const copyBtn = document.getElementById("copy-btn");
   if (copyBtn) {
-      copyBtn.addEventListener("click", () => {
-          const outputArea = document.getElementById("output-area");
-          
-          if (!outputArea.value.trim()) {
-              alert("Generate the code first!");
-              return;
+    copyBtn.addEventListener("click", () => {
+      const outputArea = document.getElementById("output-area");
+
+      if (!outputArea.value.trim()) {
+        alert("Generate the code first!");
+        return;
+      }
+
+      navigator.clipboard.writeText(outputArea.value)
+        .then(() => {
+          const originalText = copyBtn.textContent;
+          copyBtn.textContent = "Copied!";
+          copyBtn.style.backgroundColor = "#95a5a6";
+
+          setTimeout(() => {
+            copyBtn.textContent = originalText;
+            copyBtn.style.backgroundColor = "#7f8c8d";
+          }, 2000);
+        })
+        .catch(err => {
+          console.error("Error copying text: ", err);
+          alert("Failed to copy text.");
+        });
+    });
+  }
+
+  // Export selected event as JSON
+  const exportBtn = document.getElementById("export-json-btn");
+  if (exportBtn) {
+    exportBtn.addEventListener("click", () => {
+      const select = document.getElementById("saved-events-select");
+      const selectedName = select.value;
+
+      if (!selectedName) {
+        alert("Please select an event from the list above to export.");
+        return;
+      }
+
+      const library = JSON.parse(localStorage.getItem("iseql_library") || "[]");
+      const evt = library.find(e => e.name === selectedName);
+
+      if (!evt) return alert("Event not found in memory.");
+
+      const blob = new Blob([JSON.stringify(evt, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${selectedName}.json`;
+
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    });
+  }
+
+  // Import event definition from JSON file
+  const importBtn = document.getElementById("import-json-btn");
+  const fileInput = document.getElementById("import-json-input");
+
+  if (importBtn && fileInput) {
+    importBtn.addEventListener("click", () => fileInput.click());
+
+    fileInput.addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const importedEvt = JSON.parse(event.target.result);
+
+          if (!importedEvt.name || !importedEvt.logicDefinition) {
+            throw new Error("Invalid JSON: Missing name or logic definition.");
           }
 
-          // API moderna de portapapeles
-          navigator.clipboard.writeText(outputArea.value)
-              .then(() => {
-                  // Feedback visual temporal
-                  const originalText = copyBtn.textContent;
-                  copyBtn.textContent = "Copied! ✓";
-                  copyBtn.style.backgroundColor = "#95a5a6"; // Un gris un poco más claro
-                  
-                  setTimeout(() => {
-                      copyBtn.textContent = originalText;
-                      copyBtn.style.backgroundColor = "#7f8c8d"; // Volver al color original
-                  }, 2000);
-              })
-              .catch(err => {
-                  console.error("Error copying text: ", err);
-                  alert("Failed to copy text.");
-              });
-      });
+          const eventToSave = Array.isArray(importedEvt) ? importedEvt[0] : importedEvt;
+
+          let currentLibrary = JSON.parse(localStorage.getItem("iseql_library") || "[]");
+
+          currentLibrary = currentLibrary.filter(ev => ev.name !== eventToSave.name);
+          currentLibrary.push(eventToSave);
+
+          localStorage.setItem("iseql_library", JSON.stringify(currentLibrary));
+
+          renderSavedEventsManager();
+          updateDropdowns();
+
+          const select = document.getElementById("saved-events-select");
+          select.value = eventToSave.name;
+
+          alert(`Success! Loaded event "${eventToSave.name}".`);
+
+        } catch (err) {
+          console.error(err);
+          alert("Failed to load JSON: " + err.message);
+        }
+        fileInput.value = "";
+      };
+      reader.readAsText(file);
+    });
   }
 });
