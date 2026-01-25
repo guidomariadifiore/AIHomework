@@ -1,7 +1,11 @@
 /**
-ISEQL Query Builder - Recursive Logic & Index Management
-Updated to support full algebraic expansion and global index shifting.
-**/
+ * ISEQL Query Builder - FINAL MERGED VERSION
+ * Features:
+ * 1. Recursive Algebra Generation (with global index shifting M1->M3->M5).
+ * 2. Dynamic Schema & Source Preservation.
+ * 3. Save/Load UI State (Edit Mode).
+ * 4. JSON Import/Export.
+ */
 
 document.addEventListener("DOMContentLoaded", () => {
   // ==========================================
@@ -161,12 +165,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // --- CONSTRAINT REMAPPING ---
-    // The UI Constraints refer to "M1" and "M2".
-    // "M1" means the Result of Op1. "M2" means the Result of Op2.
-    // In our generated code, Op1 starts at M1 (or index 1). Op2 starts at M{op2StartIndex}.
-    // We replace "M2" in constraints with "M{op2StartIndex}".
-    // We replace "M1" with "M1" (redundant but explicit).
-
+    // Remap M1/M2 references in constraints to actual global indices
     let constraints = [];
     document.querySelectorAll(".constraint-row").forEach((row) => {
       let left = row.querySelector(".c-op1").value;
@@ -174,7 +173,6 @@ document.addEventListener("DOMContentLoaded", () => {
       let right = row.querySelector(".c-op2").value;
       const mod = row.querySelector(".c-modifier").value;
       
-      // Remap Indices
       left = remapConstraintVar(left, 1, op2StartIndex);
       right = remapConstraintVar(right, 1, op2StartIndex);
 
@@ -188,12 +186,10 @@ document.addEventListener("DOMContentLoaded", () => {
     let projParts = [];
     let returnTypes = [];
     
-    // Projections also refer to M1/M2. We must remap them too.
     document.querySelectorAll(".proj-row").forEach((row) => {
       let source = row.querySelector(".proj-source").value;
       const alias = row.querySelector(".proj-alias").value;
       
-      // Remap Source M1->M1, M2->M_new
       source = remapConstraintVar(source, 1, op2StartIndex);
 
       let finalAlias = alias && alias.trim() !== "" ? alias : `"${source.replace(/"/g, '')}"`;
@@ -256,11 +252,9 @@ $$ LANGUAGE plpgsql;`;
   }
 
   // --- RECURSIVE OPERAND RESOLVER ---
-  // Generates code for an operand starting at specific index (e.g., M3)
   function resolveOperand(prefix, startIndex) {
       const pred = document.getElementById(`${prefix}-predicate`).value;
       
-      // 1. Gather Filter Constraints
       let constraints = [];
       const container = document.getElementById(`${prefix}-args-container`);
       if (container) {
@@ -271,29 +265,25 @@ $$ LANGUAGE plpgsql;`;
         });
       }
 
-      // CASE A: ATOMIC PREDICATE (in, hasPkg)
-      // Uses exactly 1 index (M_startIndex)
+      // CASE A: ATOMIC PREDICATE
       if (pred !== "EXISTING") {
           constraints.unshift(`pred="${pred}"`);
           const code = `σ_{ ${constraints.join(" ∧ ")} }(M${startIndex})`;
           return { code: code, usedCount: 1 };
       }
 
-      // CASE B: SAVED EVENT (Recursion & Index Shifting)
+      // CASE B: SAVED EVENT
       const existName = document.getElementById(`${prefix}-existing-name`).value;
       const library = JSON.parse(localStorage.getItem("iseql_library") || "[]");
       const savedEvent = library.find(e => e.name === existName);
 
       if (!savedEvent || !savedEvent.logicDefinition) {
-          // Fallback if not found (shouldn't happen)
           return { code: `${existName}(M${startIndex})`, usedCount: 1 };
       }
 
-      // ** THE MAGIC **
-      // 1. Get the raw logic: "π... ( M1 ... M2 )"
       let expandedLogic = savedEvent.logicDefinition;
 
-      // 2. Determine how many indices it used originally (Max M index)
+      // Determine max index used in the stored logic
       const matches = expandedLogic.match(/M(\d+)/g);
       let maxIndexUsed = 0;
       if (matches) {
@@ -302,25 +292,17 @@ $$ LANGUAGE plpgsql;`;
               if (idx > maxIndexUsed) maxIndexUsed = idx;
           });
       }
-      // If it has no Ms (unlikely), assume 1.
       if (maxIndexUsed === 0) maxIndexUsed = 1;
 
-      // 3. Shift Indices!
-      // If startIndex is 1, we don't need to shift.
-      // If startIndex is 3, we map M1->M3, M2->M4.
-      // Shift Amount = startIndex - 1
+      // Shift Indices
       const shiftAmount = startIndex - 1;
-
       if (shiftAmount > 0) {
-          // Replace M(\d+) with M(\d+shift)
-          // We use a regex replacer function
           expandedLogic = expandedLogic.replace(/M(\d+)/g, (match, p1) => {
               const originalIdx = parseInt(p1);
               return `M${originalIdx + shiftAmount}`;
           });
       }
 
-      // 4. Wrap with Constraints if user added filters in the UI
       if (constraints.length > 0) {
           expandedLogic = `σ_{ ${constraints.join(" ∧ ")} } ( \n ${expandedLogic} \n )`;
       } else {
@@ -330,27 +312,21 @@ $$ LANGUAGE plpgsql;`;
       return { code: expandedLogic, usedCount: maxIndexUsed };
   }
 
-  // --- HELPER: REMAP VARIABLES FOR UI CONSTRAINTS ---
+  // --- HELPER: REMAP VARIABLES ---
   function remapConstraintVar(varStr, op1Start, op2Start) {
       if (!varStr) return varStr;
       
-      // If it refers to M2... replace with M{op2Start}
-      if (varStr.startsWith("M2.")) {
-          return varStr.replace("M2.", `M${op2Start}.`);
-      }
+      if (varStr.startsWith("M2.")) return varStr.replace("M2.", `M${op2Start}.`);
       if (varStr === "M2") return `M${op2Start}`;
 
-      // If it refers to M1... replace with M{op1Start} (usually 1, but good practice)
-      if (varStr.startsWith("M1.")) {
-          return varStr.replace("M1.", `M${op1Start}.`);
-      }
+      if (varStr.startsWith("M1.")) return varStr.replace("M1.", `M${op1Start}.`);
       if (varStr === "M1") return `M${op1Start}`;
 
       return varStr;
   }
 
   // ==========================================
-  // 4. UI HELPERS (Unchanged Logic)
+  // 4. UI HELPERS & STATE MANAGEMENT
   // ==========================================
 
   function getArgsValues(prefix) {
@@ -446,8 +422,6 @@ $$ LANGUAGE plpgsql;`;
   function generateVariableOptionsHTML() {
     let html = "";
     const formatOption = (prefixStr, alias, field) => {
-      // If user sees M1.arg1 in saved event, keep it raw in the dropdown
-      // so it maps correctly later
       if (field.id.includes('.')) {
         return `<option value='"${field.id}"'>${field.label}</option>`;
       }
@@ -508,7 +482,7 @@ $$ LANGUAGE plpgsql;`;
     }
   }
 
-  // --- UI STATE RESTORATION AND HELPERS ---
+  // --- UI INTERACTION (Temporal, Constraints, Projections) ---
   const relationRadios = document.getElementsByName("temp-relation");
   const seqOptions = document.getElementById("sequential-options");
   const overlapOptions = document.getElementById("overlapping-options");
@@ -554,7 +528,6 @@ $$ LANGUAGE plpgsql;`;
   if (overlapTypeSelect) overlapTypeSelect.addEventListener("change", updateOverlapInputs);
   updateRelationUI();
 
-  // Constraint and Projection buttons
   const addConstraintBtn = document.getElementById("add-constraint-btn");
   const constraintsList = document.getElementById("constraints-list");
 
@@ -619,7 +592,7 @@ $$ LANGUAGE plpgsql;`;
     }
   }, 300);
 
-  // --- SAVED EVENTS MANAGER ---
+  // --- SAVED EVENTS MANAGER (Restore/Delete) ---
   function renderSavedEventsManager() {
     const select = document.getElementById("saved-events-select");
     if (!select) return;
@@ -652,6 +625,186 @@ $$ LANGUAGE plpgsql;`;
         renderSavedEventsManager();
         updateDropdowns();
       }
+    });
+  }
+
+  // --- EDIT / LOAD LOGIC ---
+  const loadEventBtn = document.getElementById("load-event-btn");
+  if (loadEventBtn) {
+    loadEventBtn.addEventListener("click", () => {
+      const select = document.getElementById("saved-events-select");
+      const eventName = select.value;
+      if (!eventName) return alert("Select an event to edit.");
+
+      const library = JSON.parse(localStorage.getItem("iseql_library") || "[]");
+      const evt = library.find(e => e.name === eventName);
+
+      if (!evt) return;
+      if (!evt.uiState) {
+        return alert("This event was saved with an older version and cannot be edited visually.");
+      }
+
+      loadUIFromState(evt.name, evt.uiState);
+      alert(`Event "${evt.name}" loaded for editing.`);
+    });
+  }
+
+  function loadUIFromState(name, state) {
+    document.getElementById("event-name").value = name;
+
+    setupOperand("op1", state.op1);
+    setupOperand("op2", state.op2);
+
+    refreshAllVariableDropdowns();
+
+    const radios = document.getElementsByName("temp-relation");
+    radios.forEach(r => {
+      if (r.value === state.relation.type) r.checked = true;
+    });
+    const relationsRadio = document.querySelector('input[name="temp-relation"]:checked');
+    if (relationsRadio) relationsRadio.dispatchEvent(new Event('change'));
+
+    if (state.relation.type === "sequential") {
+      document.getElementById("seq-order").value = state.relation.seqOrder;
+      document.getElementById("seq-max-gap").value = state.relation.seqGap;
+    } else {
+      document.getElementById("overlap-type").value = state.relation.overlapType;
+      document.getElementById("overlap-type").dispatchEvent(new Event('change'));
+      document.getElementById("overlap-delta").value = state.relation.delta;
+      document.getElementById("overlap-epsilon").value = state.relation.epsilon;
+    }
+
+    const cList = document.getElementById("constraints-list");
+    cList.innerHTML = "";
+
+    state.constraints.forEach(c => {
+      document.getElementById("add-constraint-btn").click();
+      const lastRow = cList.lastElementChild;
+      if (lastRow) {
+        const sel1 = lastRow.querySelector(".c-op1");
+        const sel2 = lastRow.querySelector(".c-op2");
+        sel1.innerHTML = generateVariableOptionsHTML();
+        sel2.innerHTML = generateVariableOptionsHTML();
+        sel1.value = c.op1;
+        lastRow.querySelector(".c-operator").value = c.operator;
+        sel2.value = c.op2;
+        lastRow.querySelector(".c-modifier").value = c.mod;
+      }
+    });
+
+    document.getElementById("exclusion-mode").checked = state.exclusion;
+
+    const pList = document.getElementById("projection-list");
+    pList.innerHTML = "";
+    state.projection.fields.forEach(p => {
+      addProjectionRow(p.source, p.alias);
+      const lastRow = pList.lastElementChild;
+      const sourceSelect = lastRow.querySelector(".proj-source");
+      sourceSelect.innerHTML = generateVariableOptionsHTML();
+      sourceSelect.value = p.source;
+    });
+
+    const sfSel = document.getElementById("proj-start-source");
+    const efSel = document.getElementById("proj-end-source");
+    sfSel.value = state.projection.start;
+    efSel.value = state.projection.end;
+
+    document.getElementById("generate-btn").click();
+  }
+
+  function setupOperand(prefix, opState) {
+    const select = document.getElementById(`${prefix}-predicate`);
+    let foundOption = false;
+    if (opState.pred === "EXISTING") {
+      for (let i = 0; i < select.options.length; i++) {
+        const opt = select.options[i];
+        if (opt.value === "EXISTING" && opt.dataset.realName === opState.existName) {
+          select.selectedIndex = i;
+          foundOption = true;
+          break;
+        }
+      }
+    }
+    if (!foundOption) select.value = opState.pred;
+    select.dispatchEvent(new Event('change'));
+
+    if (opState.pred === "EXISTING") {
+      document.getElementById(`${prefix}-existing-name`).value = opState.existName;
+    }
+
+    setTimeout(() => {
+      const container = document.getElementById(`${prefix}-args-container`);
+      if (opState.args && container) {
+        Object.keys(opState.args).forEach(key => {
+          const input = container.querySelector(`input[data-field-id="${key}"]`);
+          if (input) input.value = opState.args[key];
+        });
+      }
+    }, 50);
+  }
+
+  // --- EXPORT / IMPORT JSON ---
+  const exportBtn = document.getElementById("export-json-btn");
+  if (exportBtn) {
+    exportBtn.addEventListener("click", () => {
+      const select = document.getElementById("saved-events-select");
+      const selectedName = select.value;
+      if (!selectedName) return alert("Select event to export");
+
+      const library = JSON.parse(localStorage.getItem("iseql_library") || "[]");
+      const evt = library.find(e => e.name === selectedName);
+      if (!evt) return alert("Event not found");
+
+      const blob = new Blob([JSON.stringify(evt, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${selectedName}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    });
+  }
+
+  const importBtn = document.getElementById("import-json-btn");
+  const fileInput = document.getElementById("import-json-input");
+  if (importBtn && fileInput) {
+    importBtn.addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const importedEvt = JSON.parse(event.target.result);
+          if (!importedEvt.name || !importedEvt.logicDefinition) throw new Error("Invalid JSON");
+
+          let currentLibrary = JSON.parse(localStorage.getItem("iseql_library") || "[]");
+          currentLibrary = currentLibrary.filter(ev => ev.name !== importedEvt.name);
+          currentLibrary.push(importedEvt);
+          localStorage.setItem("iseql_library", JSON.stringify(currentLibrary));
+
+          renderSavedEventsManager();
+          updateDropdowns();
+          alert(`Loaded "${importedEvt.name}"`);
+        } catch (err) {
+          alert("Failed to load JSON: " + err.message);
+        }
+        fileInput.value = "";
+      };
+      reader.readAsText(file);
+    });
+  }
+
+  // --- COPY BUTTON ---
+  const copyBtn = document.getElementById("copy-btn");
+  if (copyBtn) {
+    copyBtn.addEventListener("click", () => {
+      const outputArea = document.getElementById("output-area");
+      if (!outputArea.value) return;
+      navigator.clipboard.writeText(outputArea.value);
+      copyBtn.textContent = "Copied!";
+      setTimeout(() => copyBtn.textContent = "Copy to Clipboard", 2000);
     });
   }
 });
