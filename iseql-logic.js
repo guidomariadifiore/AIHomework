@@ -18,7 +18,7 @@ document.addEventListener("DOMContentLoaded", () => {
   renderSavedEventsManager();
 
   // Initialize operands (schemas and argument inputs)
-  ["op1", "op2"].forEach(prefix => {
+  ["op1", "op2"].forEach((prefix) => {
     updateSchemaInfoBox(prefix);
     renderArgumentInputs(prefix);
   });
@@ -47,43 +47,44 @@ document.addEventListener("DOMContentLoaded", () => {
         op1: {
           pred: document.getElementById("op1-predicate").value,
           existName: document.getElementById("op1-existing-name").value,
-          args: getArgsValues("op1")
+          args: getArgsValues("op1"),
         },
         op2: {
           pred: document.getElementById("op2-predicate").value,
           existName: document.getElementById("op2-existing-name").value,
-          args: getArgsValues("op2")
+          args: getArgsValues("op2"),
         },
         relation: {
-          type: document.querySelector('input[name="temp-relation"]:checked').value,
+          type: document.querySelector('input[name="temp-relation"]:checked')
+            .value,
           seqOrder: document.getElementById("seq-order").value,
           seqGap: document.getElementById("seq-max-gap").value,
           overlapType: document.getElementById("overlap-type").value,
           delta: document.getElementById("overlap-delta").value,
-          epsilon: document.getElementById("overlap-epsilon").value
+          epsilon: document.getElementById("overlap-epsilon").value,
         },
         constraints: [],
         exclusion: document.getElementById("exclusion-mode").checked,
         projection: {
           start: document.getElementById("proj-start-source").value,
           end: document.getElementById("proj-end-source").value,
-          fields: []
-        }
+          fields: [],
+        },
       };
 
-      document.querySelectorAll(".constraint-row").forEach(row => {
+      document.querySelectorAll(".constraint-row").forEach((row) => {
         uiState.constraints.push({
           op1: row.querySelector(".c-op1").value,
           operator: row.querySelector(".c-operator").value,
           op2: row.querySelector(".c-op2").value,
-          mod: row.querySelector(".c-modifier").value
+          mod: row.querySelector(".c-modifier").value,
         });
       });
 
-      document.querySelectorAll(".proj-row").forEach(row => {
+      document.querySelectorAll(".proj-row").forEach((row) => {
         uiState.projection.fields.push({
           source: row.querySelector(".proj-source").value,
-          alias: row.querySelector(".proj-alias").value
+          alias: row.querySelector(".proj-alias").value,
         });
       });
 
@@ -96,7 +97,7 @@ document.addEventListener("DOMContentLoaded", () => {
       };
 
       let library = JSON.parse(localStorage.getItem("iseql_library") || "[]");
-      library = library.filter(e => e.name !== eventName);
+      library = library.filter((e) => e.name !== eventName);
       library.push(eventData);
       localStorage.setItem("iseql_library", JSON.stringify(library));
 
@@ -111,7 +112,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const vals = {};
     const container = document.getElementById(`${prefix}-args-container`);
     if (container) {
-      container.querySelectorAll('input').forEach(input => {
+      container.querySelectorAll("input").forEach((input) => {
         const fieldId = input.dataset.fieldId;
         if (input.value) vals[fieldId] = input.value;
       });
@@ -153,7 +154,9 @@ document.addEventListener("DOMContentLoaded", () => {
     if (select) {
       select.addEventListener("change", function () {
         const selectedOption = this.options[this.selectedIndex];
-        const inputContainer = document.getElementById(`${prefix}-existing-container`);
+        const inputContainer = document.getElementById(
+          `${prefix}-existing-container`,
+        );
         const nameInput = document.getElementById(`${prefix}-existing-name`);
 
         if (this.value === "EXISTING") {
@@ -174,13 +177,13 @@ document.addEventListener("DOMContentLoaded", () => {
   // Resolve the alias used for an operand (M1 / M2 or event name)
   function getOperandAlias(prefix) {
     const predSelect = document.getElementById(`${prefix}-predicate`);
-    if (!predSelect) return (prefix === 'op1' ? "M1" : "M2");
+    if (!predSelect) return prefix === "op1" ? "M1" : "M2";
 
     if (predSelect.value === "EXISTING") {
       const selectedOpt = predSelect.options[predSelect.selectedIndex];
-      return selectedOpt.dataset.realName || (prefix === 'op1' ? "M1" : "M2");
+      return selectedOpt.dataset.realName || (prefix === "op1" ? "M1" : "M2");
     }
-    return (prefix === 'op1' ? "M1" : "M2");
+    return prefix === "op1" ? "M1" : "M2";
   }
 
   // Get the schema associated with the selected operand
@@ -218,7 +221,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let html = "";
 
     const formatOption = (prefixStr, alias, field) => {
-      if (field.id.includes('.')) {
+      if (field.id.includes(".")) {
         return `<option value='"${field.id}"'>${field.label}</option>`;
       }
 
@@ -267,7 +270,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const schema = getSchemaForOperand(prefix);
     container.innerHTML = "";
 
-    schema.forEach(field => {
+    schema.forEach((field) => {
       const div = document.createElement("div");
       div.className = "input-group";
       div.innerHTML = `
@@ -303,7 +306,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Show or hide UI options depending on temporal relation
   function updateRelationUI() {
-    const selected = document.querySelector('input[name="temp-relation"]:checked').value;
+    const selected = document.querySelector(
+      'input[name="temp-relation"]:checked',
+    ).value;
     if (selected === "sequential") {
       seqOptions.style.display = "block";
       overlapOptions.style.display = "none";
@@ -318,7 +323,8 @@ document.addEventListener("DOMContentLoaded", () => {
   function updateOverlapInputs() {
     const type = overlapTypeSelect.value;
     containerEpsilon.style.display = "block";
-    document.getElementById("overlap-delta").parentElement.style.display = "block";
+    document.getElementById("overlap-delta").parentElement.style.display =
+      "block";
     if (type === "DJ" || type === "RDJ") {
       labelDelta.textContent = "Max Start Delay [δ]";
       labelEpsilon.textContent = "Max End Delay [ε]";
@@ -326,7 +332,8 @@ document.addEventListener("DOMContentLoaded", () => {
       labelDelta.textContent = "Max Start Delay [δ]";
       containerEpsilon.style.display = "none";
     } else if (type === "EF") {
-      document.getElementById("overlap-delta").parentElement.style.display = "none";
+      document.getElementById("overlap-delta").parentElement.style.display =
+        "none";
       labelEpsilon.textContent = "Max End Delay [ε]";
     } else if (type === "ROJ") {
       labelDelta.textContent = "Start Point Distance [δ]";
@@ -338,7 +345,8 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   relationRadios.forEach((r) => r.addEventListener("change", updateRelationUI));
-  if (overlapTypeSelect) overlapTypeSelect.addEventListener("change", updateOverlapInputs);
+  if (overlapTypeSelect)
+    overlapTypeSelect.addEventListener("change", updateOverlapInputs);
   updateRelationUI();
 
   const addConstraintBtn = document.getElementById("add-constraint-btn");
@@ -368,7 +376,9 @@ document.addEventListener("DOMContentLoaded", () => {
             <input type="text" class="c-modifier" placeholder="+0" style="width:50px; text-align:center;">
             <button class="btn remove-btn" style="background:#e74c3c; width:auto; padding: 0 10px;">X</button>
         `;
-      row.querySelector(".remove-btn").addEventListener("click", () => row.remove());
+      row
+        .querySelector(".remove-btn")
+        .addEventListener("click", () => row.remove());
       constraintsList.appendChild(row);
     });
     setTimeout(() => {
@@ -401,26 +411,33 @@ document.addEventListener("DOMContentLoaded", () => {
     `;
 
     if (defaultValue) row.querySelector(".proj-source").value = defaultValue;
-    row.querySelector(".remove-btn").addEventListener("click", () => row.remove());
+    row
+      .querySelector(".remove-btn")
+      .addEventListener("click", () => row.remove());
     projList.appendChild(row);
   }
 
   setTimeout(() => {
     if (projList && projList.children.length === 0) {
-      const alias1 = getOperandAlias('op1');
-      const alias2 = getOperandAlias('op2');
+      const alias1 = getOperandAlias("op1");
+      const alias2 = getOperandAlias("op2");
       addProjectionRow(`${alias1}.arg1`, "arg1");
       addProjectionRow(`${alias2}.arg1`, "arg2");
     }
   }, 300);
 
-  document.getElementById("generate-btn").addEventListener("click", generateISEQL);
+  document
+    .getElementById("generate-btn")
+    .addEventListener("click", generateISEQL);
 
   // Generate the final ISEQL query from the current UI state
-  document.getElementById("generate-btn").addEventListener("click", generateISEQL);
+  document
+    .getElementById("generate-btn")
+    .addEventListener("click", generateISEQL);
 
   function generateISEQL() {
-    const currentEventName = document.getElementById("event-name").value || "NewEvent";
+    const currentEventName =
+      document.getElementById("event-name").value || "NewEvent";
 
     // GLOBAL INDEX
     let globalIndexCounter = 1;
@@ -438,7 +455,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // --- TEMPORAL OPERATOR ---
     let operatorString = "";
-    const relationType = document.querySelector('input[name="temp-relation"]:checked').value;
+    const relationType = document.querySelector(
+      'input[name="temp-relation"]:checked',
+    ).value;
 
     if (relationType === "sequential") {
       const order = document.getElementById("seq-order").value;
@@ -463,9 +482,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // --- CONSTRAINTS ---
     let constraints = [];
-    document.querySelectorAll(".constraint-row").forEach(row => {
-      let left = remapConstraintVar(row.querySelector(".c-op1").value, 1, op2StartIndex);
-      let right = remapConstraintVar(row.querySelector(".c-op2").value, 1, op2StartIndex);
+    document.querySelectorAll(".constraint-row").forEach((row) => {
+      let left = remapConstraintVar(
+        row.querySelector(".c-op1").value,
+        1,
+        op2StartIndex,
+      );
+      let right = remapConstraintVar(
+        row.querySelector(".c-op2").value,
+        1,
+        op2StartIndex,
+      );
       const op = row.querySelector(".c-operator").value;
       const mod = row.querySelector(".c-modifier").value;
 
@@ -475,14 +502,20 @@ document.addEventListener("DOMContentLoaded", () => {
       constraints.push(`${left} ${op} ${right}`);
     });
 
-    const constraintString = constraints.length ? constraints.join(" ∧ ") : "True";
+    const constraintString = constraints.length
+      ? constraints.join(" ∧ ")
+      : "True";
 
     // --- PROJECTION ---
     let projParts = [];
     let returnTypes = [];
 
-    document.querySelectorAll(".proj-row").forEach(row => {
-      let src = remapConstraintVar(row.querySelector(".proj-source").value, 1, op2StartIndex);
+    document.querySelectorAll(".proj-row").forEach((row) => {
+      let src = remapConstraintVar(
+        row.querySelector(".proj-source").value,
+        1,
+        op2StartIndex,
+      );
       const alias = row.querySelector(".proj-alias").value;
       const finalAlias = alias || `"${src}"`;
 
@@ -490,14 +523,42 @@ document.addEventListener("DOMContentLoaded", () => {
       returnTypes.push(`${finalAlias} varchar`);
     });
 
-    let sf = remapConstraintVar(document.getElementById("proj-start-source").value, 1, op2StartIndex);
-    let ef = remapConstraintVar(document.getElementById("proj-end-source").value, 1, op2StartIndex);
+    let sf = remapConstraintVar(
+      document.getElementById("proj-start-source").value,
+      1,
+      op2StartIndex,
+    );
+    let ef = remapConstraintVar(
+      document.getElementById("proj-end-source").value,
+      1,
+      op2StartIndex,
+    );
 
     projParts.push(`${sf} AS sf`);
     projParts.push(`${ef} AS ef`);
     returnTypes.push("sf integer", "ef integer");
 
-    const finalExpression = `
+    // --- FINAL ASSEMBLY ---
+    const isExclusion = document.getElementById("exclusion-mode").checked;
+
+    let finalExpression = "";
+
+    if (isExclusion) {
+      // EXCLUSION MODE: Uses MINUS logic
+      finalExpression = `
+π_{ ${projParts.join(", ")} } (
+  ( 
+    ${op1Code} 
+  ) 
+  MINUS 
+  ( 
+    ${op2Code} 
+  ) 
+  WHERE ${constraintString}
+)`;
+    } else {
+      // STANDARD MODE: Uses Temporal Operator
+      finalExpression = `
 π_{ ${projParts.join(", ")} } (
   σ_{ ${constraintString} } (
     ${op1Code}
@@ -505,16 +566,19 @@ document.addEventListener("DOMContentLoaded", () => {
     ${op2Code}
   )
 )`;
+    }
 
-    document.getElementById("output-area").value = finalExpression
+    // Output ONLY the algebraic expression (No SQL Wrapper)
+    document.getElementById("output-area").value = finalExpression;
   }
 
   function resolveOperand(prefix, startIndex) {
     const pred = document.getElementById(`${prefix}-predicate`).value;
     let constraints = [];
 
-    document.querySelectorAll(`#${prefix}-args-container .dynamic-arg-input`)
-      .forEach(input => {
+    document
+      .querySelectorAll(`#${prefix}-args-container .dynamic-arg-input`)
+      .forEach((input) => {
         if (input.value.trim() !== "") {
           constraints.push(`${input.dataset.fieldId}="${input.value}"`);
         }
@@ -525,14 +589,14 @@ document.addEventListener("DOMContentLoaded", () => {
       constraints.unshift(`pred="${pred}"`);
       return {
         code: `σ_{ ${constraints.join(" ∧ ")} }(M${startIndex})`,
-        usedCount: 1
+        usedCount: 1,
       };
     }
 
     // EXISTING EVENT
     const existName = document.getElementById(`${prefix}-existing-name`).value;
     const library = JSON.parse(localStorage.getItem("iseql_library") || "[]");
-    const saved = library.find(e => e.name === existName);
+    const saved = library.find((e) => e.name === existName);
 
     if (!saved || !saved.logicDefinition) {
       return { code: `${existName}(M${startIndex})`, usedCount: 1 };
@@ -540,7 +604,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     let logic = saved.logicDefinition;
     let maxIndex = 0;
-    (logic.match(/M(\d+)/g) || []).forEach(m => {
+    (logic.match(/M(\d+)/g) || []).forEach((m) => {
       maxIndex = Math.max(maxIndex, parseInt(m.slice(1)));
     });
 
@@ -567,7 +631,6 @@ document.addEventListener("DOMContentLoaded", () => {
     return v;
   }
 
-
   const deleteSavedBtn = document.getElementById("delete-saved-btn");
   if (deleteSavedBtn) {
     deleteSavedBtn.addEventListener("click", () => {
@@ -579,7 +642,11 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      if (confirm(`Are you sure you want to delete "${selectedName}"? This cannot be undone.`)) {
+      if (
+        confirm(
+          `Are you sure you want to delete "${selectedName}"? This cannot be undone.`,
+        )
+      ) {
         deleteEvent(selectedName);
       }
     });
@@ -622,21 +689,23 @@ document.addEventListener("DOMContentLoaded", () => {
   // Remove an event from localStorage and update the UI
   function deleteEvent(nameToDelete) {
     let library = JSON.parse(localStorage.getItem("iseql_library") || "[]");
-    const newLibrary = library.filter(e => e.name !== nameToDelete);
+    const newLibrary = library.filter((e) => e.name !== nameToDelete);
     localStorage.setItem("iseql_library", JSON.stringify(newLibrary));
 
     renderSavedEventsManager();
     updateDropdowns();
 
-    ["op1", "op2"].forEach(prefix => {
+    ["op1", "op2"].forEach((prefix) => {
       const select = document.getElementById(`${prefix}-predicate`);
       const input = document.getElementById(`${prefix}-existing-name`);
 
       if (select.value === "EXISTING" && input.value === nameToDelete) {
         select.value = "in";
-        document.getElementById(`${prefix}-existing-container`).classList.add("hidden");
+        document
+          .getElementById(`${prefix}-existing-container`)
+          .classList.add("hidden");
         input.value = "";
-        select.dispatchEvent(new Event('change'));
+        select.dispatchEvent(new Event("change"));
       }
     });
 
@@ -651,11 +720,13 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!eventName) return alert("Select an event to edit.");
 
       const library = JSON.parse(localStorage.getItem("iseql_library") || "[]");
-      const evt = library.find(e => e.name === eventName);
+      const evt = library.find((e) => e.name === eventName);
 
       if (!evt) return;
       if (!evt.uiState) {
-        return alert("This event was saved with an older version and cannot be edited visually.");
+        return alert(
+          "This event was saved with an older version and cannot be edited visually.",
+        );
       }
 
       loadUIFromState(evt.name, evt.uiState);
@@ -673,18 +744,23 @@ document.addEventListener("DOMContentLoaded", () => {
     refreshAllVariableDropdowns();
 
     const radios = document.getElementsByName("temp-relation");
-    radios.forEach(r => {
+    radios.forEach((r) => {
       if (r.value === state.relation.type) r.checked = true;
     });
-    const relationsRadio = document.querySelector('input[name="temp-relation"]:checked');
-    if (relationsRadio) relationsRadio.dispatchEvent(new Event('change'));
+    const relationsRadio = document.querySelector(
+      'input[name="temp-relation"]:checked',
+    );
+    if (relationsRadio) relationsRadio.dispatchEvent(new Event("change"));
 
     if (state.relation.type === "sequential") {
       document.getElementById("seq-order").value = state.relation.seqOrder;
       document.getElementById("seq-max-gap").value = state.relation.seqGap;
     } else {
-      document.getElementById("overlap-type").value = state.relation.overlapType;
-      document.getElementById("overlap-type").dispatchEvent(new Event('change'));
+      document.getElementById("overlap-type").value =
+        state.relation.overlapType;
+      document
+        .getElementById("overlap-type")
+        .dispatchEvent(new Event("change"));
       document.getElementById("overlap-delta").value = state.relation.delta;
       document.getElementById("overlap-epsilon").value = state.relation.epsilon;
     }
@@ -692,7 +768,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const cList = document.getElementById("constraints-list");
     cList.innerHTML = "";
 
-    state.constraints.forEach(c => {
+    state.constraints.forEach((c) => {
       document.getElementById("add-constraint-btn").click();
       const lastRow = cList.lastElementChild;
 
@@ -714,7 +790,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const pList = document.getElementById("projection-list");
     pList.innerHTML = "";
-    state.projection.fields.forEach(p => {
+    state.projection.fields.forEach((p) => {
       addProjectionRow(p.source, p.alias);
 
       const lastRow = pList.lastElementChild;
@@ -743,7 +819,10 @@ document.addEventListener("DOMContentLoaded", () => {
     if (opState.pred === "EXISTING") {
       for (let i = 0; i < select.options.length; i++) {
         const opt = select.options[i];
-        if (opt.value === "EXISTING" && opt.dataset.realName === opState.existName) {
+        if (
+          opt.value === "EXISTING" &&
+          opt.dataset.realName === opState.existName
+        ) {
           select.selectedIndex = i;
           foundOption = true;
           break;
@@ -755,17 +834,20 @@ document.addEventListener("DOMContentLoaded", () => {
       select.value = opState.pred;
     }
 
-    select.dispatchEvent(new Event('change'));
+    select.dispatchEvent(new Event("change"));
 
     if (opState.pred === "EXISTING") {
-      document.getElementById(`${prefix}-existing-name`).value = opState.existName;
+      document.getElementById(`${prefix}-existing-name`).value =
+        opState.existName;
     }
 
     setTimeout(() => {
       const container = document.getElementById(`${prefix}-args-container`);
       if (opState.args && container) {
-        Object.keys(opState.args).forEach(key => {
-          const input = container.querySelector(`input[data-field-id="${key}"]`);
+        Object.keys(opState.args).forEach((key) => {
+          const input = container.querySelector(
+            `input[data-field-id="${key}"]`,
+          );
           if (input) input.value = opState.args[key];
         });
       }
@@ -783,7 +865,8 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      navigator.clipboard.writeText(outputArea.value)
+      navigator.clipboard
+        .writeText(outputArea.value)
         .then(() => {
           const originalText = copyBtn.textContent;
           copyBtn.textContent = "Copied!";
@@ -794,7 +877,7 @@ document.addEventListener("DOMContentLoaded", () => {
             copyBtn.style.backgroundColor = "#7f8c8d";
           }, 2000);
         })
-        .catch(err => {
+        .catch((err) => {
           console.error("Error copying text: ", err);
           alert("Failed to copy text.");
         });
@@ -814,11 +897,13 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       const library = JSON.parse(localStorage.getItem("iseql_library") || "[]");
-      const evt = library.find(e => e.name === selectedName);
+      const evt = library.find((e) => e.name === selectedName);
 
       if (!evt) return alert("Event not found in memory.");
 
-      const blob = new Blob([JSON.stringify(evt, null, 2)], { type: "application/json" });
+      const blob = new Blob([JSON.stringify(evt, null, 2)], {
+        type: "application/json",
+      });
       const url = URL.createObjectURL(blob);
 
       const a = document.createElement("a");
@@ -852,11 +937,17 @@ document.addEventListener("DOMContentLoaded", () => {
             throw new Error("Invalid JSON: Missing name or logic definition.");
           }
 
-          const eventToSave = Array.isArray(importedEvt) ? importedEvt[0] : importedEvt;
+          const eventToSave = Array.isArray(importedEvt)
+            ? importedEvt[0]
+            : importedEvt;
 
-          let currentLibrary = JSON.parse(localStorage.getItem("iseql_library") || "[]");
+          let currentLibrary = JSON.parse(
+            localStorage.getItem("iseql_library") || "[]",
+          );
 
-          currentLibrary = currentLibrary.filter(ev => ev.name !== eventToSave.name);
+          currentLibrary = currentLibrary.filter(
+            (ev) => ev.name !== eventToSave.name,
+          );
           currentLibrary.push(eventToSave);
 
           localStorage.setItem("iseql_library", JSON.stringify(currentLibrary));
@@ -868,7 +959,6 @@ document.addEventListener("DOMContentLoaded", () => {
           select.value = eventToSave.name;
 
           alert(`Success! Loaded event "${eventToSave.name}".`);
-
         } catch (err) {
           console.error(err);
           alert("Failed to load JSON: " + err.message);
