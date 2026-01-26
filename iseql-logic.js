@@ -41,13 +41,7 @@ document.addEventListener("DOMContentLoaded", () => {
         outputSchema.push({ id: finalId, label: userAlias || finalId });
       });
 
-      const fullText = document.getElementById("output-area").value;
-      let logicDef = "";
-      if (fullText.includes("SELECT * FROM")) {
-        const start = fullText.indexOf("SELECT * FROM") + 13;
-        const end = fullText.lastIndexOf(";");
-        logicDef = fullText.substring(start, end).trim();
-      }
+      const logicDef = document.getElementById("output-area").value.trim();
 
       const uiState = {
         op1: {
@@ -423,14 +417,26 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("generate-btn").addEventListener("click", generateISEQL);
 
   // Generate the final ISEQL query from the current UI state
+  document.getElementById("generate-btn").addEventListener("click", generateISEQL);
+
   function generateISEQL() {
-    const currentEventName = document.getElementById("event-name").value;
-    const alias1 = getOperandAlias("op1");
-    const alias2 = getOperandAlias("op2");
+    const currentEventName = document.getElementById("event-name").value || "NewEvent";
 
-    const op1 = buildOperandString("op1", alias1, currentEventName);
-    const op2 = buildOperandString("op2", alias2, currentEventName);
+    // GLOBAL INDEX
+    let globalIndexCounter = 1;
 
+    // --- OPERAND 1 ---
+    const op1Result = resolveOperand("op1", globalIndexCounter);
+    const op1Code = op1Result.code;
+
+    globalIndexCounter += op1Result.usedCount;
+    const op2StartIndex = globalIndexCounter;
+
+    // --- OPERAND 2 ---
+    const op2Result = resolveOperand("op2", op2StartIndex);
+    const op2Code = op2Result.code;
+
+    // --- TEMPORAL OPERATOR ---
     let operatorString = "";
     const relationType = document.querySelector('input[name="temp-relation"]:checked').value;
 
@@ -438,142 +444,129 @@ document.addEventListener("DOMContentLoaded", () => {
       const order = document.getElementById("seq-order").value;
       const gap = document.getElementById("seq-max-gap").value;
       let opCode = order === "before" ? "Bef" : "Aft";
-      operatorString = (gap && gap.trim() !== "") ? `${opCode}_{δ=${gap}}` : `${opCode}_{δ=d}`;
+      operatorString = gap ? `${opCode}_{δ=${gap}}` : `${opCode}_{δ=d}`;
     } else {
       const type = overlapTypeSelect.value;
-      const delta = document.getElementById("overlap-delta").value;
-      const epsilon = document.getElementById("overlap-epsilon").value;
+      const delta = document.getElementById("overlap-delta").value || "d";
+      const epsilon = document.getElementById("overlap-epsilon").value || "d";
+
       let params = [];
-      const dVal = delta ? delta : "d";
-      const eVal = epsilon ? epsilon : "d";
-
-      if (type === "DJ") { params.push(`δ=${dVal}`); params.push(`ε=${eVal}`); }
-      else if (type === "SP") { params.push(`δ=${dVal}`); }
-      else if (type === "EF") { params.push(`ε=${eVal}`); }
-      else { params.push(`δ=${dVal}`); params.push(`ε=${eVal}`); }
-
+      if (["DJ", "RDJ", "LOJ", "ROJ"].includes(type)) {
+        params.push(`δ=${delta}`, `ε=${epsilon}`);
+      } else if (type === "SP") {
+        params.push(`δ=${delta}`);
+      } else if (type === "EF") {
+        params.push(`ε=${epsilon}`);
+      }
       operatorString = `${type}_{${params.join(", ")}}`;
     }
 
+    // --- CONSTRAINTS ---
     let constraints = [];
-    document.querySelectorAll(".constraint-row").forEach((row) => {
-      const left = row.querySelector(".c-op1").value;
+    document.querySelectorAll(".constraint-row").forEach(row => {
+      let left = remapConstraintVar(row.querySelector(".c-op1").value, 1, op2StartIndex);
+      let right = remapConstraintVar(row.querySelector(".c-op2").value, 1, op2StartIndex);
       const op = row.querySelector(".c-operator").value;
-      const right = row.querySelector(".c-op2").value;
       const mod = row.querySelector(".c-modifier").value;
-      let rightSide = right;
-      if (mod && mod !== "+0" && mod.trim() !== "") { rightSide = `${right} ${mod}`; }
-      constraints.push(`${left} ${op} ${rightSide}`);
-    });
-    const constraintString = constraints.length > 0 ? constraints.join(" ∧ ") : "True";
 
+      if (mod && mod.trim() !== "" && mod !== "+0") {
+        right = `${right} ${mod}`;
+      }
+      constraints.push(`${left} ${op} ${right}`);
+    });
+
+    const constraintString = constraints.length ? constraints.join(" ∧ ") : "True";
+
+    // --- PROJECTION ---
     let projParts = [];
     let returnTypes = [];
 
-    document.querySelectorAll(".proj-row").forEach((row) => {
-      const source = row.querySelector(".proj-source").value;
+    document.querySelectorAll(".proj-row").forEach(row => {
+      let src = remapConstraintVar(row.querySelector(".proj-source").value, 1, op2StartIndex);
       const alias = row.querySelector(".proj-alias").value;
+      const finalAlias = alias || `"${src}"`;
 
-      let finalAlias = "";
-
-      if (alias && alias.trim() !== "") {
-        finalAlias = alias;
-      } else {
-        finalAlias = `"${source.replace(/"/g, '')}"`;
-      }
-
-      projParts.push(`${source} AS ${finalAlias}`);
+      projParts.push(`${src} AS ${finalAlias}`);
       returnTypes.push(`${finalAlias} varchar`);
     });
 
-    const sfSource = document.getElementById("proj-start-source").value;
-    const efSource = document.getElementById("proj-end-source").value;
-    projParts.push(sfSource);
-    projParts.push(efSource);
-    returnTypes.push("sf integer");
-    returnTypes.push("ef integer");
+    let sf = remapConstraintVar(document.getElementById("proj-start-source").value, 1, op2StartIndex);
+    let ef = remapConstraintVar(document.getElementById("proj-end-source").value, 1, op2StartIndex);
 
-    const projectionFields = projParts.join(", ");
-    const returnSig = returnTypes.join(", ");
-    const isExclusion = document.getElementById("exclusion-mode").checked;
+    projParts.push(`${sf} AS sf`);
+    projParts.push(`${ef} AS ef`);
+    returnTypes.push("sf integer", "ef integer");
 
-    let finalExpression = "";
-    if (isExclusion) {
-      finalExpression = `
-π_{ ${projectionFields} } (
-  ( 
-    ${op1} 
-  ) 
-  MINUS 
-  ( 
-    ${op2} 
-  ) 
-  WHERE ${constraintString}
-)`;
-    } else {
-      finalExpression = `
-π_{ ${projectionFields} } (
+    const finalExpression = `
+π_{ ${projParts.join(", ")} } (
   σ_{ ${constraintString} } (
-    ${op1} 
-    ${operatorString} 
-    ${op2}
-  ) 
+    ${op1Code}
+    ${operatorString}
+    ${op2Code}
+  )
 )`;
-    }
 
-    const finalOutput = `-- ISEQL Definition for ${currentEventName}
-CREATE OR REPLACE FUNCTION ${currentEventName} (source VARCHAR) 
-RETURNS TABLE (${returnSig}) AS $$
-BEGIN
-    RETURN QUERY 
-    SELECT * FROM 
-    ${finalExpression};
-END;
-$$ LANGUAGE plpgsql;`;
-
-    document.getElementById("output-area").value = finalOutput;
+    document.getElementById("output-area").value = finalExpression
   }
 
-  // Build operand expression including filters and nested events
-  function buildOperandString(prefix, alias, definitionName) {
+  function resolveOperand(prefix, startIndex) {
     const pred = document.getElementById(`${prefix}-predicate`).value;
     let constraints = [];
 
-    const container = document.getElementById(`${prefix}-args-container`);
-    if (container) {
-      container.querySelectorAll('.dynamic-arg-input').forEach(input => {
-        if (input.value && input.value.trim() !== "") {
-          const fieldId = input.dataset.fieldId;
-          constraints.push(`${fieldId}="${input.value}"`);
+    document.querySelectorAll(`#${prefix}-args-container .dynamic-arg-input`)
+      .forEach(input => {
+        if (input.value.trim() !== "") {
+          constraints.push(`${input.dataset.fieldId}="${input.value}"`);
         }
       });
+
+    // ATOMIC
+    if (pred !== "EXISTING") {
+      constraints.unshift(`pred="${pred}"`);
+      return {
+        code: `σ_{ ${constraints.join(" ∧ ")} }(M${startIndex})`,
+        usedCount: 1
+      };
     }
 
-    if (pred === "EXISTING") {
-      const existName = document.getElementById(`${prefix}-existing-name`).value || "EventX";
+    // EXISTING EVENT
+    const existName = document.getElementById(`${prefix}-existing-name`).value;
+    const library = JSON.parse(localStorage.getItem("iseql_library") || "[]");
+    const saved = library.find(e => e.name === existName);
 
-      if (definitionName && existName === definitionName) {
-        const library = JSON.parse(localStorage.getItem("iseql_library") || "[]");
-        const savedEvent = library.find(e => e.name === existName);
-
-        if (savedEvent && savedEvent.logicDefinition) {
-          if (constraints.length > 0) {
-            return `σ_{ ${constraints.join(" ∧ ")} } ( \n ${savedEvent.logicDefinition} \n )`;
-          }
-          return `( \n ${savedEvent.logicDefinition} \n )`;
-        }
-      }
-
-      if (constraints.length > 0) {
-        return `σ_{ ${constraints.join(" ∧ ")} }(${existName}(${alias}))`;
-      } else {
-        return `${existName}(${alias})`;
-      }
+    if (!saved || !saved.logicDefinition) {
+      return { code: `${existName}(M${startIndex})`, usedCount: 1 };
     }
 
-    constraints.unshift(`pred="${pred}"`);
-    return `σ_{ ${constraints.join(" ∧ ")} }(${alias})`;
+    let logic = saved.logicDefinition;
+    let maxIndex = 0;
+    (logic.match(/M(\d+)/g) || []).forEach(m => {
+      maxIndex = Math.max(maxIndex, parseInt(m.slice(1)));
+    });
+
+    if (maxIndex === 0) maxIndex = 1;
+
+    const shift = startIndex - 1;
+    if (shift > 0) {
+      logic = logic.replace(/M(\d+)/g, (_, i) => `M${parseInt(i) + shift}`);
+    }
+
+    if (constraints.length) {
+      logic = `σ_{ ${constraints.join(" ∧ ")} } ( ${logic} )`;
+    } else {
+      logic = `( ${logic} )`;
+    }
+
+    return { code: logic, usedCount: maxIndex };
   }
+
+  function remapConstraintVar(v, op1Start, op2Start) {
+    if (!v) return v;
+    if (v.startsWith("M1.")) return v.replace("M1.", `M${op1Start}.`);
+    if (v.startsWith("M2.")) return v.replace("M2.", `M${op2Start}.`);
+    return v;
+  }
+
 
   const deleteSavedBtn = document.getElementById("delete-saved-btn");
   if (deleteSavedBtn) {
